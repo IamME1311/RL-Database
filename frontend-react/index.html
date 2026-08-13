@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>RL Database</title>
+    <script>
+      // Set the theme class before first paint. Doing this in React instead would
+      // flash the wrong palette on every load for anyone whose choice differs from
+      // the default. Must stay in sync with src/hooks/useTheme.ts.
+      (function () {
+        try {
+          var stored = localStorage.getItem('rl-theme');
+          var dark = stored
+            ? stored === 'dark'
+            : !window.matchMedia('(prefers-color-scheme: light)').matches;
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
