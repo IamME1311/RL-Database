@@ -2,3 +2,7 @@
 .env
 __pycache__/
 build/
+claude_*
+reactfrontend.bundle
+reactfrontend.patch
+PROPOSED_BACKEND_CHANGES.md

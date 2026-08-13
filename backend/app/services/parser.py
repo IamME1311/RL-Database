@@ -73,25 +73,49 @@ class Parser:
         for raw in raw_data:
             r = CampaignMasterRow.model_validate(raw)
 
-            r.pitch_code = f"{r.pitch_code.strip().upper()}-{date.today().year}"
-            r.month_name = r.month_name.lower().strip()
-            r.status = r.status.lower().strip()
-            r.report_status = r.status.lower().strip()
+            pitch_code = f"{r.pitch_code.strip().upper()}-{date.today().year}"
+            month_name = r.month_name.lower().strip()
+            brand_name = r.brand_name.lower().strip()
+            campaign_name = r.campaign_name.lower().strip()
+            manager = r.manager.lower().strip()
+            status = r.status.lower().strip()
 
-            r.expected_end_date = datetime.fromisoformat(r.expected_end_date).date()
-            r.start_date = datetime.fromisoformat(r.start_date).date()
+            if r.report_status:
+                report_status = r.report_status.lower().strip()
+            else:
+                report_status = CampaignStatusChoices.WIP
+
+            expected_end_date = datetime.fromisoformat(r.expected_end_date).date()
+            start_date = datetime.fromisoformat(r.start_date).date()
 
             if r.end_date:
-                r.end_date = datetime.fromisoformat(r.end_date).date()
+                end_date = datetime.fromisoformat(r.end_date).date()
             else:
-                r.end_date = None
+                end_date = None
 
             if r.report_completion_date:
-                r.report_completion_date = datetime.fromisoformat(r.report_completion_date).date()
+                report_completion_date = datetime.fromisoformat(r.report_completion_date).date()
             else:
-                r.report_completion_date = None
+                report_completion_date = None
 
 
-            clean_data.append(Campaign(**r.model_dump()))
+            clean_data.append(Campaign(
+                campaign_code=r.campaign_code,
+                month_name=month_name,
+                year=r.year,
+                brand_name=brand_name,
+                campaign_name=campaign_name,
+                manager=manager,
+                member_names=r.member_names,
+                spreadsheet_link=r.spreadsheet_link,
+                report_link=r.report_link,
+                status=status,
+                expected_end_date=expected_end_date,
+                start_date=start_date,
+                end_date=end_date,
+                report_status=report_status,
+                report_completion_date=report_completion_date,
+                pitch_code=pitch_code
+            ))
 
         return clean_data
