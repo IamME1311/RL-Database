@@ -1,0 +1,43 @@
+from typing import Optional, TYPE_CHECKING
+import re
+
+from sqlmodel import SQLModel, Field, text, Relationship
+from sqlalchemy import CheckConstraint
+from pydantic import field_validator
+
+if TYPE_CHECKING:
+    from .pitch import Pitch
+
+
+GSTIN_REGEX = r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$"
+
+
+class Company(SQLModel, table=True):
+
+    __table_args__ = (
+        CheckConstraint(
+            f"gstin = '' OR gstin ~ '{GSTIN_REGEX}'",
+            name="ck_company_gstin_format",
+        ),
+    )
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)
+    gstin: str = Field(
+        default="",
+        sa_column_kwargs={
+            "server_default": text("''"),
+        },
+        schema_extra={"placeholder": "27AAAAA1111A1Z1"},
+    )
+
+    pitches: list["Pitch"] = Relationship(back_populates="billing_company")
+
+    @field_validator("gstin")
+    @classmethod
+    def validate_gstin(cls, value: str) -> str:
+        upper_val = value.upper().strip()
+        if upper_val == "":
+            return upper_val
+        if not re.match(GSTIN_REGEX, upper_val):
+            raise ValueError("Invalid GSTIN format structure")
+        return upper_val
