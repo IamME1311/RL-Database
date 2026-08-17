@@ -25,6 +25,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "OPTIONS", "DELETE"],
     allow_headers=["Content-Type", "Accept", "X-CSRF-Token"],
+    expose_headers=["X-Error-Code", "Retry-After"],
 )
 
 
