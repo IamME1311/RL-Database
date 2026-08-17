@@ -1,16 +1,15 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from redis import asyncio as redis
 
-from app.core.db import init_db
+from app.core.config import settings
 from app.core.redis_client import get_redis_pool
-# from app.api.deps import RedisDep
-from app.api.v1 import router
+from app.api.v1 import router as v1_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # await init_db(reset=True) # for DEV only
     pool = get_redis_pool()
     app.state.redis = redis.Redis(connection_pool=pool)
     yield
@@ -19,9 +18,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(router, prefix="/api/v1")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS", "DELETE"],
+    allow_headers=["Content-Type", "Accept", "X-CSRF-Token"],
+)
 
 
-@app.get("/")
+app.include_router(v1_router, prefix="/api/v1")
+
+
+@app.get("/api")
 async def home_route():
     return {"message": "Connected to RL Database backend!!"}
