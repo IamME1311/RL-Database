@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { Column } from '@/components/DataTable';
-import { ChipList, ExternalLink, StatusBadge } from '@/components/bits';
+import { BrandLink, ChipList, ExternalLink, StatusBadge } from '@/components/bits';
 import { MONTH_LABELS } from '@/lib/enums';
 import { formatDate, formatNumber } from '@/lib/format';
 import type { CampaignRow } from '@/types/api';
@@ -28,15 +28,7 @@ export const campaignColumns: Column<CampaignRow>[] = [
   {
     id: 'brand',
     header: 'Brand',
-    cell: (row) => (
-      <Link
-        to={`/brands/${encodeURIComponent(row.brand_name)}`}
-        onClick={(event) => event.stopPropagation()}
-        className="hover:underline"
-      >
-        {row.brand_name}
-      </Link>
-    ),
+    cell: (row) => <BrandLink brand={row.brand} />,
   },
   {
     id: 'period',

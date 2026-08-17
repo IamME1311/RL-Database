@@ -124,11 +124,11 @@ export function useCreatorDetail(id: string | undefined) {
   });
 }
 
-export function useBrandDetail(name: string | undefined) {
+export function useBrandDetail(id: number | undefined) {
   return useQuery({
-    queryKey: queryKeys.brandDetail(name ?? ''),
-    queryFn: ({ signal }) => detailApi.brand(name!, { signal }),
-    enabled: Boolean(name),
+    queryKey: queryKeys.brandDetail(String(id ?? '')),
+    queryFn: ({ signal }) => detailApi.brand(id!, { signal }),
+    enabled: id !== undefined,
   });
 }
 
@@ -154,7 +154,8 @@ export function detailPath(scope: SearchScope, id: string): string {
     case 'creators':
       return `/creators/${id}`;
     case 'brands':
-      return `/brands/${encodeURIComponent(id)}`;
+      // Suggestion.id carries brand.id stringified for this type.
+      return `/brands/${id}`;
     case 'campaigns':
       return `/campaigns/${id}`;
     case 'pitches':

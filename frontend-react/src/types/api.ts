@@ -64,7 +64,41 @@ export interface LoginRequest {
   password: string;
 }
 
-/** `code` lets the UI show a specific message instead of a generic failure. */
+/** POST /auth/signup → 201 + SessionUser, deliberately WITHOUT a session cookie. */
+export interface SignUpRequest {
+  name: string;
+  email: string;
+  password: string;
+}
+
+/** POST /auth/verify-email → 200 + SessionUser, and DOES set the session cookies. */
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+export interface ResendVerificationRequest {
+  email: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+/** POST /auth/reset-password → 200 + SessionUser + cookies; revokes other sessions. */
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+/**
+ * `code` lets the UI show a specific message instead of a generic failure. The
+ * backend sends these in an `X-Error-Code` response header.
+ *
+ * NOTE: `X-Error-Code` is not CORS-safelisted, so the browser can only read it when
+ * the API is same-origin (true in dev via the Vite proxy) or when the backend adds
+ * `expose_headers`. Everything here degrades to `detail`/status-based messaging if
+ * the header isn't readable — see PROPOSED_BACKEND_CHANGES.md.
+ */
 export type AuthErrorCode =
   | 'invalid_credentials'
   | 'domain_not_allowed'
@@ -72,6 +106,8 @@ export type AuthErrorCode =
   | 'google_denied'
   | 'google_no_email'
   | 'state_mismatch'
+  | 'invalid_token'
+  | 'rate_limited'
   | 'unknown';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,7 +187,7 @@ export interface CreatorRow {
 export interface CreatorPitchSummary {
   pitch_id: string;
   pitch_code: string;
-  company_name: string;
+  brand: BrandRef | null;
   campaign_name: string;
   platform: Platform[];
   final_cost: number | null;
@@ -162,7 +198,7 @@ export interface CreatorCampaignSummary {
   campaign_id: string;
   campaign_code: string;
   campaign_name: string;
-  brand_name: string;
+  brand: BrandRef | null;
   month_name: Month;
   year: number;
   status: CampaignStatus;
@@ -186,10 +222,22 @@ export interface CreatorDetail extends CreatorRow {
 
 // ── Brands ──────────────────────────────────────────────────────────────────
 //
-// "Brand" is not a table. It appears three times in the schema: Company.name
-// (the billing entity), Pitch.company_name, and Campaign.brand_name. The backend
-// should expose a unified brand directory keyed on a normalised name — see
-// PROPOSED_BACKEND_CHANGES.md.
+// `Brand` is now a real table (backend/app/models/brand.py) and the denormalised
+// name columns were dropped: Campaign.brand_name, Pitch.company_name and
+// Pitch.billing_company_id are gone, all replaced by `brand_id → brand.id`.
+// The hierarchy is Company 1──N Brand 1──N Pitch/Campaign, so a pitch reaches its
+// billing company *through* its brand rather than directly.
+//
+// IMPORTANT: `brand_id` is nullable and nothing populates it yet — the ingest path
+// still passes the old `brand_name`/`company_name` kwargs, which SQLModel silently
+// drops. So `brand: null` is the common case today, not an edge case, and every
+// render site has to degrade gracefully rather than assume a brand is present.
+
+/** Minimal brand reference — enough to name it and link to its detail page. */
+export interface BrandRef {
+  id: number;
+  name: string;
+}
 
 export type BrandSort =
   | 'relevance'
@@ -215,12 +263,13 @@ export interface BrandSearchRequest extends BrandFilters, Paging {
 }
 
 export interface BrandRow {
-  /** Normalised brand name — the identity for this row, and its route param. */
-  brand: string;
-  /** Present when the brand resolves to a company row. */
-  company_id: number | null;
-  company_name: string | null;
+  /** brand.id — the row's identity and its route param. */
+  id: number;
+  name: string;
+  /** The brand's own GSTIN. NOT NULL in the DB, but may be the empty string. */
   gstin: string | null;
+  /** The owning company, when brand.company_id is set. */
+  company: CompanyRef | null;
   pitch_count: number;
   campaign_count: number;
   creator_count: number;
@@ -228,6 +277,12 @@ export interface BrandRow {
   platforms: Platform[];
   /** ISO date of the most recent campaign start / pitch creation. */
   latest_activity: string | null;
+}
+
+export interface CompanyRef {
+  id: number;
+  name: string;
+  gstin: string | null;
 }
 
 export interface BrandDetail extends BrandRow {
@@ -254,7 +309,8 @@ export interface CampaignFilters {
   months: Month[];
   years: number[];
   managers: string[];
-  brands: string[];
+  /** brand.id values — brands are filtered by id now that Brand is a real table. */
+  brand_ids: number[];
   start_date_from: string | null;
   start_date_to: string | null;
 }
@@ -268,7 +324,8 @@ export interface CampaignRow {
   id: string;
   campaign_code: string;
   campaign_name: string;
-  brand_name: string;
+  /** null whenever campaign.brand_id is unset — currently the common case. */
+  brand: BrandRef | null;
   manager: string;
   member_names: string[];
   month_name: Month;
@@ -334,7 +391,7 @@ export interface CampaignCreatorRow {
 }
 
 export interface CampaignDetail extends CampaignRow {
-  pitch: { id: string; pitch_code: string; company_name: string } | null;
+  pitch: { id: string; pitch_code: string; brand: BrandRef | null } | null;
   creators: CampaignCreatorRow[];
   /** Server-computed rollup so the UI doesn't re-derive spend from every row. */
   totals: {
@@ -363,7 +420,8 @@ export interface PitchFilters {
   platforms: Platform[];
   sales_leads: string[];
   list_leads: string[];
-  companies: string[];
+  /** brand.id values. Replaces the old `companies: string[]` — Pitch.company_name is gone. */
+  brand_ids: number[];
   created_from: string | null;
   created_to: string | null;
   /** Narrow to pitches that did / didn't convert into a campaign. */
@@ -378,14 +436,14 @@ export interface PitchSearchRequest extends PitchFilters, Paging {
 export interface PitchRow {
   id: string;
   pitch_code: string;
-  company_name: string;
+  /** null whenever pitch.brand_id is unset — currently the common case. */
+  brand: BrandRef | null;
   campaign_name: string;
   org_type: OrgType;
   requirement: PitchRequirement;
   platform: Platform[];
   sales_lead: string;
   list_lead: string | null;
-  billing_company: { id: number; name: string; gstin: string | null } | null;
   creator_count: number;
   /** Whether a Campaign row points at this pitch. */
   converted: boolean;
@@ -436,6 +494,13 @@ export interface PitchCreatorRow {
 
 export interface PitchDetail extends PitchRow {
   campaign: { id: string; campaign_code: string; campaign_name: string } | null;
+  /**
+   * The billing company, resolved through brand → company. Replaces the old
+   * `billing_company` on the row: `Pitch.billing_company_id` was dropped, so a pitch
+   * only reaches its company via its brand — a join worth doing on the detail
+   * endpoint but not on every search row.
+   */
+  company: CompanyRef | null;
   creators: PitchCreatorRow[];
   totals: {
     creator_count: number;
@@ -469,7 +534,11 @@ export interface GlobalSearchResponse {
 /** Omnibox typeahead. Deliberately cheap and Redis-cached. */
 export interface Suggestion {
   type: SearchScope;
-  /** Route param for this hit: creator/campaign/pitch UUID, or the brand name. */
+  /**
+   * Route param for this hit. Stays a string, but the meaning differs by type:
+   * creator/campaign/pitch carry their UUID, and `brands` now carries `brand.id`
+   * stringified — it used to be the brand name.
+   */
   id: string;
   label: string;
   sublabel: string | null;
@@ -504,7 +573,8 @@ export interface CampaignFacets {
   months: Month[];
   years: number[];
   managers: string[];
-  brands: string[];
+  /** id + name, so the filter can submit ids while still showing names. */
+  brands: BrandRef[];
   total_campaigns: number;
 }
 
@@ -514,7 +584,8 @@ export interface PitchFacets {
   platforms: Platform[];
   sales_leads: string[];
   list_leads: string[];
-  companies: string[];
+  /** Was `companies: string[]`; pitches are grouped by brand now. */
+  brands: BrandRef[];
   total_pitches: number;
 }
 

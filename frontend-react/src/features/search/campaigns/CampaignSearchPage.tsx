@@ -9,7 +9,7 @@ import { EmptyState, ErrorState } from '@/components/states';
 import { useUrlSearchState } from '@/hooks/useUrlSearchState';
 import { CAMPAIGN_STATUS_LABELS, MONTH_LABELS } from '@/lib/enums';
 import { formatNumber } from '@/lib/format';
-import { FilterPanel, toOptions } from '../FilterPanel';
+import { FilterPanel, brandOptions, toOptions } from '../FilterPanel';
 import { ResultsHeader } from '../ResultsHeader';
 import { CAMPAIGN_SORTS, SCOPE_FILTER_KEYS, countActiveFilters, useCampaignRequest } from '../request-state';
 import { useCampaignFacets, useCampaignSearch } from '../queries';
@@ -56,9 +56,9 @@ export function CampaignSearchPage() {
         />
         <FacetMultiSelect
           label="Brand"
-          options={toOptions(facets?.brands)}
-          selected={request.brands}
-          onChange={(values) => set({ brand: values })}
+          options={brandOptions(facets?.brands)}
+          selected={request.brand_ids.map(String)}
+          onChange={(values) => set({ brand_id: values })}
         />
         <FacetMultiSelect
           label="Manager"

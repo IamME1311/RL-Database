@@ -11,9 +11,10 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
         // Never retry an expired session or a "you can't do this" — retrying a 401
-        // just delays the redirect, and a 403 will never succeed.
+        // just delays the redirect, and a 403 will never succeed. 429 especially:
+        // retrying a rate-limited endpoint is what got us rate-limited.
         if (error instanceof ApiError) {
-          if (error.status === 401 || error.status === 403) return false;
+          if (error.status === 401 || error.status === 403 || error.status === 429) return false;
           if (error.status >= 400 && error.status < 500) return false;
         }
         return failureCount < 2;

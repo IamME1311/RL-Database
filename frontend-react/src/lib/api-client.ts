@@ -8,12 +8,15 @@ export class ApiError extends Error {
   readonly detail: string;
   readonly code: AuthErrorCode | string | null;
   readonly path: string;
+  /** Seconds to wait, from a 429's `Retry-After` header. Null when absent/unreadable. */
+  readonly retryAfterSeconds: number | null;
 
   constructor(opts: {
     status: number;
     detail: string;
     code?: string | null;
     path: string;
+    retryAfterSeconds?: number | null;
   }) {
     super(opts.detail);
     this.name = 'ApiError';
@@ -21,6 +24,11 @@ export class ApiError extends Error {
     this.detail = opts.detail;
     this.code = opts.code ?? null;
     this.path = opts.path;
+    this.retryAfterSeconds = opts.retryAfterSeconds ?? null;
+  }
+
+  get isRateLimited(): boolean {
+    return this.status === 429;
   }
 
   /** A 404 on a path that simply hasn't been built yet, vs a genuinely missing record. */
@@ -116,6 +124,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       detail: await extractDetail(response),
       code: response.headers.get('X-Error-Code'),
       path,
+      retryAfterSeconds: parseRetryAfter(response.headers.get('Retry-After')),
     });
   }
 
@@ -124,6 +133,23 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const text = await response.text();
   if (!text) return undefined as T;
   return JSON.parse(text) as T;
+}
+
+/**
+ * RFC 9110 allows `Retry-After` in two forms: delta-seconds ("45") or an HTTP-date
+ * ("Wed, 21 Oct 2026 07:28:00 GMT"). Accept both, and never return a negative wait —
+ * a date already in the past means "retry now", not "retry in -3 seconds".
+ */
+export function parseRetryAfter(raw: string | null): number | null {
+  if (!raw) return null;
+
+  const trimmed = raw.trim();
+  const seconds = Number(trimmed);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.round(seconds));
+
+  const asDate = Date.parse(trimmed);
+  if (Number.isNaN(asDate)) return null;
+  return Math.max(0, Math.round((asDate - Date.now()) / 1000));
 }
 
 async function extractDetail(response: Response): Promise<string> {

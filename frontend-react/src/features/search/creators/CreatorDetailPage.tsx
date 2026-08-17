@@ -7,6 +7,7 @@ import { ErrorState, LoadingState } from '@/components/states';
 import { MaskedContact } from '@/components/MaskedContact';
 import { StatRow, StatTile } from '@/components/StatTile';
 import {
+  BrandLink,
   ChipList,
   DefinitionItem,
   DefinitionList,
@@ -158,7 +159,7 @@ const campaignSummaryColumns: Column<CreatorCampaignSummary>[] = [
     ),
   },
   { id: 'name', header: 'Campaign', cell: (row) => row.campaign_name, className: 'max-w-64 truncate' },
-  { id: 'brand', header: 'Brand', cell: (row) => row.brand_name },
+  { id: 'brand', header: 'Brand', cell: (row) => <BrandLink brand={row.brand} /> },
   {
     id: 'period',
     header: 'Period',
@@ -181,9 +182,9 @@ const pitchSummaryColumns: Column<CreatorPitchSummary>[] = [
       </Link>
     ),
   },
-  { id: 'company', header: 'Company', cell: (row) => row.company_name },
+  { id: 'brand', header: 'Brand', cell: (row) => <BrandLink brand={row.brand} /> },
   { id: 'campaign', header: 'Campaign', cell: (row) => row.campaign_name, className: 'max-w-64 truncate' },
   { id: 'platform', header: 'Platform', cell: (row) => <PlatformBadges platforms={row.platform} /> },
   { id: 'final', header: 'Final cost', numeric: true, cell: (row) => formatCurrency(row.final_cost) },
-  { id: 'brand', header: 'Brand cost', numeric: true, cell: (row) => formatCurrency(row.brand_cost) },
+  { id: 'brand_cost', header: 'Brand cost', numeric: true, cell: (row) => formatCurrency(row.brand_cost) },
 ];

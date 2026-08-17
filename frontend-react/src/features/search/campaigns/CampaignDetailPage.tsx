@@ -8,6 +8,7 @@ import { ErrorState, LoadingState } from '@/components/states';
 import { StatRow, StatTile } from '@/components/StatTile';
 import { Badge } from '@/components/ui/badge';
 import {
+  BrandLink,
   ChipList,
   DefinitionItem,
   DefinitionList,
@@ -52,9 +53,7 @@ export function CampaignDetailPage() {
           <h1 className="truncate text-xl font-semibold">{data.campaign_name}</h1>
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span className="font-mono text-xs">{data.campaign_code}</span>
-            <Link to={`/brands/${encodeURIComponent(data.brand_name)}`} className="hover:underline">
-              {data.brand_name}
-            </Link>
+            <BrandLink brand={data.brand} />
             <StatusBadge status={data.status} />
           </p>
         </div>

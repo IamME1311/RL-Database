@@ -19,10 +19,13 @@ import { creatorColumns } from '../creators/columns';
 import { useBrandDetail } from '../queries';
 
 export function BrandDetailPage() {
-  const { brandName } = useParams<{ brandName: string }>();
+  const { brandId } = useParams<{ brandId: string }>();
   const navigate = useNavigate();
-  const decoded = brandName ? decodeURIComponent(brandName) : undefined;
-  const { data, isPending, isError, error, refetch } = useBrandDetail(decoded);
+  // An id-keyed route needs no encode/decode dance, unlike the old name-keyed one.
+  const id = brandId ? Number(brandId) : undefined;
+  const { data, isPending, isError, error, refetch } = useBrandDetail(
+    Number.isFinite(id) ? id : undefined,
+  );
 
   if (isPending) return <LoadingState label="Loading brand…" />;
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
@@ -37,9 +40,9 @@ export function BrandDetailPage() {
             Back to brands
           </Link>
         </Button>
-        <h1 className="truncate text-xl font-semibold">{data.brand}</h1>
+        <h1 className="truncate text-xl font-semibold">{data.name}</h1>
         <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          {data.company_name ?? 'No billing company linked'}
+          {data.company?.name ?? 'No billing company linked'}
           {data.org_types.map((orgType) => (
             <OrgTypeBadge key={orgType} orgType={orgType} />
           ))}
@@ -61,11 +64,19 @@ export function BrandDetailPage() {
         <CardContent className="pt-4">
           <DefinitionList>
             <DefinitionItem label="Billing company">
-              {data.company_name ?? <span className="text-muted-foreground">not linked</span>}
+              {data.company?.name ?? <span className="text-muted-foreground italic">not linked</span>}
             </DefinitionItem>
-            <DefinitionItem label="GSTIN">
+            <DefinitionItem label="Brand GSTIN">
               {data.gstin ? (
                 <span className="font-mono text-xs">{data.gstin}</span>
+              ) : (
+                <span className="text-muted-foreground">not on file</span>
+              )}
+            </DefinitionItem>
+            {/* The owning company carries its own GSTIN, separate from the brand's. */}
+            <DefinitionItem label="Company GSTIN">
+              {data.company?.gstin ? (
+                <span className="font-mono text-xs">{data.company.gstin}</span>
               ) : (
                 <span className="text-muted-foreground">not on file</span>
               )}

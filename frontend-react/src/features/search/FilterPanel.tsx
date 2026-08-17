@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import type { BrandRef } from '@/types/api';
 
 /**
  * Sidebar shell for the per-scope filter controls. Sticky on desktop so filters
@@ -66,5 +67,16 @@ export function toOptions<T extends string | number>(
     value: String(value),
     label: labels?.[value] ?? String(value),
     hint: hints?.[value],
+  }));
+}
+
+/**
+ * Brand facets submit `brand.id` but display the name — brands are a real table now,
+ * so filtering by name would be both ambiguous and slower than filtering by key.
+ */
+export function brandOptions(brands: readonly BrandRef[] | undefined) {
+  return (brands ?? []).map((brand) => ({
+    value: String(brand.id),
+    label: brand.name,
   }));
 }

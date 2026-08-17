@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
-import { AlertCircle, Database, Loader2, LogIn } from 'lucide-react';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { AlertCircle, Database, Loader2, LogIn, MailWarning } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { USE_MOCKS, googleLoginUrl } from '@/lib/api-client';
+import { ApiError, USE_MOCKS, googleLoginUrl } from '@/lib/api-client';
 import { authApi } from '@/lib/endpoints';
 import { useAuth } from './useAuth';
 import { describeAuthError } from './AuthProvider';
+import { ResendVerificationForm } from './ResendVerificationForm';
 import { ALLOWED_EMAIL_DOMAINS, validateWorkEmail } from './domain';
 import type { AuthErrorCode } from '@/types/api';
 
@@ -18,7 +19,9 @@ const GOOGLE_ERRORS: Record<AuthErrorCode, string> = {
   google_no_email: 'Google did not return a verified email address for that account.',
   state_mismatch: 'Sign-in expired before it completed. Please try again.',
   invalid_credentials: 'Incorrect email or password.',
-  not_verified: 'This account has not been verified yet. Ask an admin to enable it.',
+  not_verified: 'This account has not been verified yet.',
+  invalid_token: 'That link is no longer valid. Request a new one.',
+  rate_limited: 'Too many attempts. Please wait a moment and try again.',
   unknown: 'Sign-in failed. Please try again.',
 };
 
@@ -35,6 +38,14 @@ export function LoginPage() {
   const domainError = useMemo(() => (touched ? validateWorkEmail(email) : null), [email, touched]);
   const serverError = describeAuthError(loginError);
   const googleError = authErrorParam ? (GOOGLE_ERRORS[authErrorParam] ?? GOOGLE_ERRORS.unknown) : null;
+
+  // The backend answers an unverified account with 403 + X-Error-Code: not_verified.
+  // Fall back to the ?auth_error= param too, since the Google callback can also land
+  // here with not_verified, and the header isn't readable cross-origin without
+  // `expose_headers` on the backend's CORS config.
+  const needsVerification =
+    (loginError instanceof ApiError && loginError.code === 'not_verified') ||
+    authErrorParam === 'not_verified';
 
   // In mock mode there is no backend to complete the Google round-trip, so the
   // button simulates a successful callback instead of navigating away.
@@ -113,7 +124,15 @@ export function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Link
+                  to="/forgot-password"
+                  className="text-[11px] text-muted-foreground transition-colors hover:text-primary"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"
@@ -137,6 +156,20 @@ export function LoginPage() {
             </Button>
           </form>
 
+          {/*
+            An unverified account is the one login failure with an obvious next
+            action, so offer it right here instead of leaving a dead-end message.
+          */}
+          {needsVerification && (
+            <div className="mt-4 space-y-2.5 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-3">
+              <p className="flex gap-2 text-xs text-[var(--warning)]">
+                <MailWarning className="mt-px size-3.5 shrink-0" />
+                <span>This account hasn't been verified yet. Send yourself a new link.</span>
+              </p>
+              <ResendVerificationForm defaultEmail={email.trim()} compact />
+            </div>
+          )}
+
           <div className="my-4 flex items-center gap-3">
             <span className="h-px flex-1 bg-border" />
             <span className="text-[11px] uppercase tracking-wide text-muted-foreground">or</span>
@@ -159,8 +192,15 @@ export function LoginPage() {
           </p>
         </div>
 
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          No account yet?{' '}
+          <Link to="/signup" className="text-primary hover:underline">
+            Create one
+          </Link>
+        </p>
+
         {USE_MOCKS && (
-          <p className="mt-4 text-center text-[11px] text-muted-foreground">
+          <p className="mt-3 text-center text-[11px] text-muted-foreground">
             Running on fixture data (<code className="font-mono">VITE_USE_MOCKS=true</code>). Any
             @{ALLOWED_EMAIL_DOMAINS[0]} address with a 4+ character password signs in.
           </p>

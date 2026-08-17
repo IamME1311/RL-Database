@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { ExternalLink as ExternalLinkIcon } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { cn } from '@/lib/utils';
@@ -10,6 +11,7 @@ import {
   TIER_LABELS,
 } from '@/lib/enums';
 import type {
+  BrandRef,
   CampaignStatus,
   OrgType,
   PitchRequirement,
@@ -41,6 +43,40 @@ export function ExternalLink({
       {children ?? 'open'}
       <ExternalLinkIcon className="size-3" />
     </a>
+  );
+}
+
+/**
+ * A brand reference, or an explicit "not linked" when it's absent.
+ *
+ * `brand_id` is nullable and the ingest path doesn't populate it yet, so null is the
+ * common case rather than an edge case — rendering a blank cell there would look like
+ * a UI bug instead of missing data.
+ */
+export function BrandLink({
+  brand,
+  className,
+  emphasis = 'normal',
+}: {
+  brand: BrandRef | null | undefined;
+  className?: string;
+  emphasis?: 'normal' | 'medium';
+}) {
+  if (!brand) {
+    return <span className="text-muted-foreground italic">not linked</span>;
+  }
+  return (
+    <Link
+      to={`/brands/${brand.id}`}
+      onClick={(event) => event.stopPropagation()}
+      className={cn(
+        'hover:underline',
+        emphasis === 'medium' && 'font-medium',
+        className,
+      )}
+    >
+      {brand.name}
+    </Link>
   );
 }
 

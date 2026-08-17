@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { Column } from '@/components/DataTable';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, OrgTypeBadge, PlatformBadges, RequirementBadge } from '@/components/bits';
+import { BrandLink, ExternalLink, OrgTypeBadge, PlatformBadges, RequirementBadge } from '@/components/bits';
 import { formatDate, formatNumber } from '@/lib/format';
 import type { PitchRow } from '@/types/api';
 
@@ -20,17 +20,9 @@ export const pitchColumns: Column<PitchRow>[] = [
     ),
   },
   {
-    id: 'company',
-    header: 'Company',
-    cell: (row) => (
-      <Link
-        to={`/brands/${encodeURIComponent(row.company_name)}`}
-        onClick={(event) => event.stopPropagation()}
-        className="font-medium hover:underline"
-      >
-        {row.company_name}
-      </Link>
-    ),
+    id: 'brand',
+    header: 'Brand',
+    cell: (row) => <BrandLink brand={row.brand} emphasis="medium" />,
     className: 'max-w-48 truncate',
   },
   {
@@ -51,12 +43,6 @@ export const pitchColumns: Column<PitchRow>[] = [
     id: 'list_lead',
     header: 'List lead',
     cell: (row) => row.list_lead ?? <span className="text-muted-foreground">—</span>,
-  },
-  {
-    id: 'billing',
-    header: 'Billing company',
-    cell: (row) => row.billing_company?.name ?? <span className="text-muted-foreground">—</span>,
-    className: 'max-w-56 truncate',
   },
   { id: 'creators', header: 'Creators', numeric: true, cell: (row) => formatNumber(row.creator_count) },
   {

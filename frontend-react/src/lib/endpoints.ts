@@ -36,6 +36,7 @@ import type {
   PitchSearchRequest,
   SearchResponse,
   SessionUser,
+  SignUpRequest,
   SuggestResponse,
 } from '@/types/api';
 
@@ -44,6 +45,10 @@ interface Ctx {
 }
 
 // ─── auth ────────────────────────────────────────────────────────────────────
+//
+// Paths are all in this one object deliberately: /auth/forgot-password and
+// /auth/reset-password are an agreed contract the backend hasn't implemented yet, so
+// if the final names differ, renaming them is a single-file edit.
 
 export const authApi = {
   me: ({ signal }: Ctx = {}): Promise<SessionUser> =>
@@ -56,6 +61,30 @@ export const authApi = {
 
   logout: (): Promise<void> =>
     USE_MOCKS ? mockAuth.logout() : api.post<void>('/auth/logout'),
+
+  /** 201 + SessionUser, but no session cookie — the account is unverified. */
+  signup: (body: SignUpRequest): Promise<SessionUser> =>
+    USE_MOCKS ? mockAuth.signup(body) : api.post<SessionUser>('/auth/signup', body),
+
+  /** 200 + SessionUser AND sets the session cookies, so this logs the user in. */
+  verifyEmail: (token: string): Promise<SessionUser> =>
+    USE_MOCKS ? mockAuth.verifyEmail(token) : api.post<SessionUser>('/auth/verify-email', { token }),
+
+  /** 204 whether or not the account exists — never surface a difference to the user. */
+  resendVerification: (email: string): Promise<void> =>
+    USE_MOCKS
+      ? mockAuth.resendVerification(email)
+      : api.post<void>('/auth/resend-verification', { email }),
+
+  /** 204 always, same non-enumerating contract as resendVerification. */
+  forgotPassword: (email: string): Promise<void> =>
+    USE_MOCKS ? mockAuth.forgotPassword(email) : api.post<void>('/auth/forgot-password', { email }),
+
+  /** 200 + SessionUser + cookies, and revokes the user's other sessions. */
+  resetPassword: (token: string, password: string): Promise<SessionUser> =>
+    USE_MOCKS
+      ? mockAuth.resetPassword(token, password)
+      : api.post<SessionUser>('/auth/reset-password', { token, password }),
 
   /**
    * Mock-mode stand-in for the backend's Google callback having already set the
@@ -118,10 +147,8 @@ export const detailApi = {
   creator: (id: string, { signal }: Ctx = {}): Promise<CreatorDetail> =>
     USE_MOCKS ? mockDetail.creator(id, signal) : api.get<CreatorDetail>(`/creators/${id}`, { signal }),
 
-  brand: (name: string, { signal }: Ctx = {}): Promise<BrandDetail> =>
-    USE_MOCKS
-      ? mockDetail.brand(name, signal)
-      : api.get<BrandDetail>(`/brands/${encodeURIComponent(name)}`, { signal }),
+  brand: (id: number, { signal }: Ctx = {}): Promise<BrandDetail> =>
+    USE_MOCKS ? mockDetail.brand(id, signal) : api.get<BrandDetail>(`/brands/${id}`, { signal }),
 
   campaign: (id: string, { signal }: Ctx = {}): Promise<CampaignDetail> =>
     USE_MOCKS ? mockDetail.campaign(id, signal) : api.get<CampaignDetail>(`/campaigns/${id}`, { signal }),

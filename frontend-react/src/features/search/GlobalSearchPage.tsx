@@ -103,8 +103,8 @@ export function GlobalSearchPage() {
         title="Brands"
         group={groups.brands}
         columns={brandColumns}
-        rowKey={(row) => row.brand}
-        onRowClick={(row) => navigate(`/brands/${encodeURIComponent(row.brand)}`)}
+        rowKey={(row) => String(row.id)}
+        onRowClick={(row) => navigate(`/brands/${row.id}`)}
         query={trimmed}
         isFetching={isFetching}
       />

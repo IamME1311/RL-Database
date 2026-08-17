@@ -10,7 +10,7 @@ import { Select } from '@/components/ui/select';
 import { useUrlSearchState } from '@/hooks/useUrlSearchState';
 import { ORG_TYPE_LABELS, PITCH_REQUIREMENT_LABELS, PLATFORM_LABELS } from '@/lib/enums';
 import { formatNumber } from '@/lib/format';
-import { FilterPanel, toOptions } from '../FilterPanel';
+import { FilterPanel, brandOptions, toOptions } from '../FilterPanel';
 import { ResultsHeader } from '../ResultsHeader';
 import { PITCH_SORTS, SCOPE_FILTER_KEYS, countActiveFilters, usePitchRequest } from '../request-state';
 import { usePitchFacets, usePitchSearch } from '../queries';
@@ -44,10 +44,10 @@ export function PitchSearchPage() {
         }
       >
         <FacetMultiSelect
-          label="Company"
-          options={toOptions(facets?.companies)}
-          selected={request.companies}
-          onChange={(values) => set({ company: values })}
+          label="Brand"
+          options={brandOptions(facets?.brands)}
+          selected={request.brand_ids.map(String)}
+          onChange={(values) => set({ p_brand_id: values })}
         />
         <FacetMultiSelect
           label="Org type"
@@ -135,7 +135,7 @@ export function PitchSearchPage() {
                 <EmptyState
                   icon={<FileText className="size-7" />}
                   title="No pitches match"
-                  description="Text search covers the pitch code, company, campaign name, and the sales and list leads."
+                  description="Text search covers the pitch code, brand, campaign name, and the sales and list leads."
                 />
               }
             />

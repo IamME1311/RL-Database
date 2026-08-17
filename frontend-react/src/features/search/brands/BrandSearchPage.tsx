@@ -109,15 +109,15 @@ export function BrandSearchPage() {
             <DataTable
               columns={brandColumns}
               rows={result?.rows ?? []}
-              rowKey={(row) => row.brand}
-              onRowClick={(row) => navigate(`/brands/${encodeURIComponent(row.brand)}`)}
+              rowKey={(row) => String(row.id)}
+              onRowClick={(row) => navigate(`/brands/${row.id}`)}
               isLoading={searchQuery.isPending}
               isFetching={searchQuery.isFetching && !searchQuery.isPending}
               emptyState={
                 <EmptyState
                   icon={<Building2 className="size-7" />}
                   title="No brands match"
-                  description="Brand search covers the brand name on campaigns, the company name on pitches, and the billing company (including its GSTIN)."
+                  description="Brand search covers the brand name, its GSTIN, and the name of the company that owns it."
                 />
               }
             />

@@ -4,6 +4,10 @@ import { App } from './App';
 import { EmptyState } from './components/states';
 import { AuthCallbackPage } from './features/auth/AuthCallbackPage';
 import { LoginPage } from './features/auth/LoginPage';
+import { SignUpPage } from './features/auth/SignUpPage';
+import { VerifyEmailPage } from './features/auth/VerifyEmailPage';
+import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { RequireAuth, RequireIngestPermission } from './features/auth/guards';
 import { SearchLayout } from './features/search/SearchLayout';
 import { GlobalSearchPage } from './features/search/GlobalSearchPage';
@@ -37,8 +41,17 @@ const IngestPage = lazy(() =>
 export function AppRoutes() {
   return (
     <Routes>
-      {/* Public */}
+      {/*
+        Public. The verify-email and reset-password routes MUST stay outside
+        <RequireAuth> — someone following a link from their inbox has no session yet,
+        and a guard would bounce them to login and break the very flow the email
+        exists to start.
+      */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignUpPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
       {/* Everything else requires a session */}
@@ -59,7 +72,7 @@ export function AppRoutes() {
           {/* Detail pages sit outside the search shell — they're destinations, not
               a filtered list, and shouldn't carry the tab bar. */}
           <Route path="creators/:creatorId" element={<CreatorDetailPage />} />
-          <Route path="brands/:brandName" element={<BrandDetailPage />} />
+          <Route path="brands/:brandId" element={<BrandDetailPage />} />
           <Route path="campaigns/:campaignId" element={<CampaignDetailPage />} />
           <Route path="pitches/:pitchId" element={<PitchDetailPage />} />
 

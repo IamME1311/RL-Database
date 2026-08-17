@@ -19,6 +19,19 @@ then flip `VITE_USE_MOCKS=false` to point at the real thing.
 
 In mock mode, any `@ripplelinks.com` address with a 4+ character password signs in.
 
+### Mock triggers
+
+Fixed values that steer the mock backend down each branch of the real contract, so every
+state is reachable without a running server:
+
+| Value | Effect |
+|---|---|
+| `?token=expired` on `/verify-email` or `/reset-password` | 400 + `invalid_token` — the expired-link state |
+| any other token | verifies / resets successfully and signs you in |
+| `unverified@ripplelinks.com` | login returns 403 `not_verified`, showing the inline resend form |
+| `ratelimited@ripplelinks.com` | 429 + `Retry-After: 45` — the live cooldown countdown |
+| `taken@ripplelinks.com` | signup returns 409 |
+
 | Script | What it does |
 |---|---|
 | `npm run dev` | Vite dev server, proxying `/api` → `http://localhost:8000` |
@@ -58,7 +71,8 @@ src/
 │   └── mocks/            # fixture data and an in-memory implementation of the contract
 ├── hooks/                # useDebouncedValue, useUrlSearchState, useTheme
 ├── features/
-│   ├── auth/             # provider, login, Google redirect, guards
+│   ├── auth/             # provider, login, Google redirect, guards,
+│   │                     # signup / verify-email / forgot- + reset-password
 │   ├── search/           # omnibox, scope tabs, global view, and one folder per entity
 │   └── ingest/           # Apps Script trigger, JSON upload + validator, job history
 └── components/           # DataTable, Pagination, facet controls, states, ui/ primitives
@@ -80,10 +94,35 @@ URL-state plumbing are shared.
   the next page or query resolves.
 - Each scope's results are cached under their own query key, so switching tabs is instant.
 
+## Auth routes
+
+`/login`, `/signup`, `/verify-email`, `/forgot-password`, `/reset-password` and `/auth/callback`
+are all **public** — outside `<RequireAuth>`. Anyone arriving from a link in their inbox has no
+session yet, so guarding these would bounce them to login and break the flow the email exists to
+start.
+
+Two of them sign you in as a side effect: `/auth/verify-email` and `/auth/reset-password` set the
+session cookies and return the `SessionUser`, so those pages seed the auth cache directly and
+redirect into the app rather than asking for credentials the user just proved they hold.
+
+`/forgot-password` and the resend-verification form always render the same confirmation whether or
+not the account exists, matching the backend's unconditional 204 — that identical output is the
+feature, not laziness. On `429` the shared `useCooldown` hook turns `Retry-After` into a live
+countdown and disables the button until it clears.
+
 ## Notes on the data
 
 A few schema details the UI has to work around, all documented at the call site:
 
+- `Brand` is a real table, and `Campaign.brand_name` / `Pitch.company_name` /
+  `Pitch.billing_company_id` no longer exist. Rows carry `brand: BrandRef | null` and brands are
+  filtered and routed by numeric id. **`brand_id` is nullable and nothing populates it yet**, so
+  "not linked" is the common case — every brand cell renders it explicitly rather than blank.
+- A pitch reaches its billing company *through* its brand (`Company 1─N Brand 1─N Pitch`), so the
+  company appears on the brand and pitch detail pages, not on the pitch search row.
+- `Brand.name` is lowercased by a model validator, so names may arrive as `boat` rather than `boAt`.
+  The UI renders whatever the API returns — title-casing client-side would mangle `CRED` and `boAt`
+  differently, so the display casing is a backend decision.
 - `Creator` has no `profile_url` column — `lib/format.ts` derives it from `platform` + `username`,
   and also accepts a server-computed one.
 - `TierChoices.NA` is the empty string, which can't be a select value or URL param. The UI uses a

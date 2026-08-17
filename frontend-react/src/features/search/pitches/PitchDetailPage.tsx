@@ -8,6 +8,7 @@ import { ErrorState, LoadingState } from '@/components/states';
 import { StatRow, StatTile } from '@/components/StatTile';
 import { Badge } from '@/components/ui/badge';
 import {
+  BrandLink,
   DefinitionItem,
   DefinitionList,
   OrgTypeBadge,
@@ -42,9 +43,7 @@ export function PitchDetailPage() {
           <h1 className="truncate text-xl font-semibold">{data.campaign_name}</h1>
           <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span className="font-mono text-xs">{data.pitch_code}</span>
-            <Link to={`/brands/${encodeURIComponent(data.company_name)}`} className="hover:underline">
-              {data.company_name}
-            </Link>
+            <BrandLink brand={data.brand} emphasis="medium" />
             <OrgTypeBadge orgType={data.org_type} />
             {data.converted ? (
               <Badge variant="success">Converted</Badge>
@@ -99,18 +98,21 @@ export function PitchDetailPage() {
             </DefinitionItem>
             <DefinitionItem label="Sales lead">{data.sales_lead}</DefinitionItem>
             <DefinitionItem label="List lead">{data.list_lead ?? '—'}</DefinitionItem>
+            <DefinitionItem label="Brand">
+              <BrandLink brand={data.brand} />
+            </DefinitionItem>
             <DefinitionItem label="Billing company">
-              {data.billing_company ? (
+              {data.company ? (
                 <span>
-                  {data.billing_company.name}
-                  {data.billing_company.gstin && (
+                  {data.company.name}
+                  {data.company.gstin && (
                     <span className="ml-2 font-mono text-xs text-muted-foreground">
-                      {data.billing_company.gstin}
+                      {data.company.gstin}
                     </span>
                   )}
                 </span>
               ) : (
-                <span className="text-muted-foreground">not linked</span>
+                <span className="text-muted-foreground italic">not linked</span>
               )}
             </DefinitionItem>
             <DefinitionItem label="Resulting campaign">

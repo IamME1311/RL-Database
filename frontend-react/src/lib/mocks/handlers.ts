@@ -9,6 +9,7 @@
 import type {
   BrandDetail,
   BrandFacets,
+  BrandRef,
   BrandRow,
   BrandSearchRequest,
   CampaignDetail,
@@ -31,16 +32,17 @@ import type {
   Platform,
   SearchResponse,
   SessionUser,
+  SignUpRequest,
   SuggestResponse,
   Suggestion,
   Tier,
 } from '@/types/api';
 import {
-  BRANDS,
   CATEGORIES,
   CITIES,
   GENDERS,
   LANGUAGES,
+  MOCK_BRANDS,
   MOCK_CAMPAIGNS,
   MOCK_CREATORS,
   MOCK_CREATOR_EXTRAS,
@@ -52,6 +54,9 @@ import {
 import { MONTHS } from '@/lib/enums';
 import { ApiError } from '@/lib/api-client';
 import { deriveProfileUrl, splitRawList } from '@/lib/format';
+// The mock stands in for a server-side rule the real backend doesn't have yet, so it
+// reuses the client's threshold rather than declaring a second source of truth.
+import { MIN_PASSWORD_LENGTH } from '@/features/auth/PasswordFields';
 
 /** Simulated server latency, so debouncing and loading states are visible. */
 const LATENCY_MS = 180;
@@ -140,6 +145,15 @@ export const mockAuth = {
         path: '/auth/login',
       });
     }
+    // Lets the login page's inline "resend verification" path be exercised.
+    if (email.trim().toLowerCase() === UNVERIFIED_EMAIL) {
+      throw new ApiError({
+        status: 403,
+        detail: 'Account is not verified',
+        code: 'not_verified',
+        path: '/auth/login',
+      });
+    }
     if (password.length < 4) {
       throw new ApiError({
         status: 401,
@@ -164,7 +178,100 @@ export const mockAuth = {
     sessionStorage.removeItem(MOCK_SESSION_KEY);
     await delay(null);
   },
+
+  /** 201 + SessionUser but deliberately NO session — the account is unverified. */
+  async signup(body: SignUpRequest): Promise<SessionUser> {
+    await delay(null);
+    requireWorkDomain(body.email, '/auth/signup');
+    if (body.email.toLowerCase() === TAKEN_EMAIL) {
+      throw new ApiError({ status: 409, detail: 'Email already exists', path: '/auth/signup' });
+    }
+    return {
+      ...MOCK_USER,
+      email: body.email,
+      name: body.name,
+      is_verified: false,
+      permissions: { can_ingest: false },
+    };
+  },
+
+  /** Verifying logs you in, matching the real endpoint's Set-Cookie behaviour. */
+  async verifyEmail(token: string): Promise<SessionUser> {
+    await delay(null);
+    assertTokenUsable(token, '/auth/verify-email');
+    const user: SessionUser = { ...MOCK_USER, is_verified: true };
+    sessionStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(user));
+    return user;
+  },
+
+  async resendVerification(email: string): Promise<void> {
+    await delay(null);
+    maybeRateLimit(email, '/auth/resend-verification');
+    // 204 regardless of whether the account exists — no enumeration.
+  },
+
+  async forgotPassword(email: string): Promise<void> {
+    await delay(null);
+    maybeRateLimit(email, '/auth/forgot-password');
+  },
+
+  async resetPassword(token: string, password: string): Promise<SessionUser> {
+    await delay(null);
+    assertTokenUsable(token, '/auth/reset-password');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      throw new ApiError({
+        status: 422,
+        detail: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+        path: '/auth/reset-password',
+      });
+    }
+    const user: SessionUser = { ...MOCK_USER, is_verified: true };
+    sessionStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(user));
+    return user;
+  },
 };
+
+/** Mock-only trigger values, so every branch of the real contract is demoable. */
+const EXPIRED_TOKEN = 'expired';
+const RATE_LIMITED_EMAIL = 'ratelimited@ripplelinks.com';
+const TAKEN_EMAIL = 'taken@ripplelinks.com';
+const UNVERIFIED_EMAIL = 'unverified@ripplelinks.com';
+
+function requireWorkDomain(email: string, path: string): void {
+  const domain = email.split('@').pop()?.toLowerCase().trim();
+  if (domain !== 'ripplelinks.com') {
+    throw new ApiError({
+      status: 403,
+      detail: 'Only @ripplelinks.com accounts can sign in.',
+      code: 'domain_not_allowed',
+      path,
+    });
+  }
+}
+
+function assertTokenUsable(token: string, path: string): void {
+  if (!token || token === EXPIRED_TOKEN) {
+    throw new ApiError({
+      status: 400,
+      detail: 'Invalid or expired link',
+      code: 'invalid_token',
+      path,
+    });
+  }
+}
+
+/** Exercises the 429 + Retry-After path the real endpoints will use. */
+function maybeRateLimit(email: string, path: string): void {
+  if (email.trim().toLowerCase() === RATE_LIMITED_EMAIL) {
+    throw new ApiError({
+      status: 429,
+      detail: 'Too many requests. Please wait before trying again.',
+      code: 'rate_limited',
+      path,
+      retryAfterSeconds: 45,
+    });
+  }
+}
 
 function nameFromEmail(email: string): string {
   const local = email.split('@')[0];
@@ -177,53 +284,50 @@ function nameFromEmail(email: string): string {
 
 // ─── brand directory (derived, since "brand" is not a table) ─────────────────
 
+/**
+ * Rolls the brand table up with the counts the UI shows. Keyed on `brand.id` now
+ * that Brand is a real table — the old version grouped free-text names, which is
+ * exactly the ambiguity the FK removed.
+ */
 function buildBrandDirectory(): BrandRow[] {
-  const byName = new Map<string, BrandRow>();
-
-  const ensure = (name: string): BrandRow => {
-    const key = name.toLowerCase().trim();
-    let row = byName.get(key);
-    if (!row) {
-      row = {
-        brand: name,
-        company_id: null,
-        company_name: null,
-        gstin: null,
+  const byId = new Map<number, BrandRow>(
+    MOCK_BRANDS.map((brand) => [
+      brand.id,
+      {
+        id: brand.id,
+        name: brand.name,
+        gstin: brand.gstin,
+        company: brand.company,
         pitch_count: 0,
         campaign_count: 0,
         creator_count: 0,
         org_types: [],
         platforms: [],
         latest_activity: null,
-      };
-      byName.set(key, row);
-    }
-    return row;
-  };
+      },
+    ]),
+  );
 
   for (const pitch of MOCK_PITCHES) {
-    const row = ensure(pitch.company_name);
+    const row = pitch.brand ? byId.get(pitch.brand.id) : undefined;
+    if (!row) continue;
     row.pitch_count += 1;
     row.creator_count += pitch.creator_count;
     if (!row.org_types.includes(pitch.org_type)) row.org_types.push(pitch.org_type);
     for (const platform of pitch.platform) {
       if (!row.platforms.includes(platform)) row.platforms.push(platform);
     }
-    if (pitch.billing_company) {
-      row.company_id = pitch.billing_company.id;
-      row.company_name = pitch.billing_company.name;
-      row.gstin = pitch.billing_company.gstin || null;
-    }
     row.latest_activity = maxDate(row.latest_activity, pitch.created_at?.slice(0, 10) ?? null);
   }
 
   for (const campaign of MOCK_CAMPAIGNS) {
-    const row = ensure(campaign.brand_name);
+    const row = campaign.brand ? byId.get(campaign.brand.id) : undefined;
+    if (!row) continue;
     row.campaign_count += 1;
     row.latest_activity = maxDate(row.latest_activity, campaign.start_date);
   }
 
-  return [...byName.values()].sort((a, b) => a.brand.localeCompare(b.brand));
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function maxDate(a: string | null, b: string | null): string | null {
@@ -232,7 +336,14 @@ function maxDate(a: string | null, b: string | null): string | null {
   return a > b ? a : b;
 }
 
-const MOCK_BRANDS = buildBrandDirectory();
+const BRAND_DIRECTORY = buildBrandDirectory();
+
+/** Only brands actually referenced by data are worth offering as a filter. */
+function brandRefFacet(): BrandRef[] {
+  return BRAND_DIRECTORY.filter((b) => b.pitch_count > 0 || b.campaign_count > 0)
+    .map((b) => ({ id: b.id, name: b.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 // ─── creators ────────────────────────────────────────────────────────────────
 
@@ -307,11 +418,11 @@ function relevance(c: CreatorRow, text: string): number {
 // ─── brands / campaigns / pitches filtering ──────────────────────────────────
 
 function filterBrands(req: BrandSearchRequest): BrandRow[] {
-  const rows = MOCK_BRANDS.filter((b) => {
-    if (!matchesTokens([b.brand, b.company_name, b.gstin].filter(Boolean).join(' '), req.text)) return false;
+  const rows = BRAND_DIRECTORY.filter((b) => {
+    if (!matchesTokens([b.name, b.company?.name, b.gstin].filter(Boolean).join(' '), req.text)) return false;
     if (req.org_types.length && !req.org_types.some((t) => b.org_types.includes(t))) return false;
     if (req.platforms.length && !req.platforms.some((p) => b.platforms.includes(p))) return false;
-    if (req.has_company && b.company_id === null) return false;
+    if (req.has_company && b.company === null) return false;
     if (req.has_gstin && !b.gstin) return false;
     if (req.min_campaigns !== null && b.campaign_count < req.min_campaigns) return false;
     if (req.min_pitches !== null && b.pitch_count < req.min_pitches) return false;
@@ -321,9 +432,9 @@ function filterBrands(req: BrandSearchRequest): BrandRow[] {
   const out = [...rows];
   switch (req.sort) {
     case 'name_asc':
-      return out.sort((a, b) => a.brand.localeCompare(b.brand));
+      return out.sort((a, b) => a.name.localeCompare(b.name));
     case 'name_desc':
-      return out.sort((a, b) => b.brand.localeCompare(a.brand));
+      return out.sort((a, b) => b.name.localeCompare(a.name));
     case 'pitches_desc':
       return out.sort((a, b) => b.pitch_count - a.pitch_count);
     case 'recent_desc':
@@ -334,7 +445,7 @@ function filterBrands(req: BrandSearchRequest): BrandRow[] {
       if (!req.text) return out.sort((a, b) => b.campaign_count - a.campaign_count);
       return out.sort(
         (a, b) =>
-          Number(norm(b.brand).startsWith(norm(req.text))) - Number(norm(a.brand).startsWith(norm(req.text))) ||
+          Number(norm(b.name).startsWith(norm(req.text))) - Number(norm(a.name).startsWith(norm(req.text))) ||
           b.campaign_count - a.campaign_count,
       );
   }
@@ -342,14 +453,16 @@ function filterBrands(req: BrandSearchRequest): BrandRow[] {
 
 function filterCampaigns(req: CampaignSearchRequest): CampaignRow[] {
   const rows = MOCK_CAMPAIGNS.filter((c) => {
-    const hay = [c.campaign_code, c.campaign_name, c.brand_name, c.manager, ...c.member_names].join(' ');
+    const hay = [c.campaign_code, c.campaign_name, c.brand?.name, c.manager, ...c.member_names]
+      .filter(Boolean)
+      .join(' ');
     if (!matchesTokens(hay, req.text)) return false;
     if (!anyOf(req.statuses, c.status)) return false;
     if (!anyOf(req.report_statuses, c.report_status)) return false;
     if (!anyOf(req.months, c.month_name)) return false;
     if (req.years.length && !req.years.includes(c.year)) return false;
     if (req.managers.length && !req.managers.includes(c.manager)) return false;
-    if (req.brands.length && !req.brands.includes(c.brand_name)) return false;
+    if (req.brand_ids.length && !(c.brand && req.brand_ids.includes(c.brand.id))) return false;
     if (req.start_date_from && (c.start_date ?? '') < req.start_date_from) return false;
     if (req.start_date_to && (c.start_date ?? '') > req.start_date_to) return false;
     return true;
@@ -372,7 +485,7 @@ function filterCampaigns(req: CampaignSearchRequest): CampaignRow[] {
 
 function filterPitches(req: PitchSearchRequest): PitchRow[] {
   const rows = MOCK_PITCHES.filter((p) => {
-    const hay = [p.pitch_code, p.company_name, p.campaign_name, p.sales_lead, p.list_lead, p.billing_company?.name]
+    const hay = [p.pitch_code, p.brand?.name, p.campaign_name, p.sales_lead, p.list_lead]
       .filter(Boolean)
       .join(' ');
     if (!matchesTokens(hay, req.text)) return false;
@@ -381,7 +494,7 @@ function filterPitches(req: PitchSearchRequest): PitchRow[] {
     if (!anyOf(req.platforms, p.platform)) return false;
     if (req.sales_leads.length && !req.sales_leads.includes(p.sales_lead)) return false;
     if (req.list_leads.length && !req.list_leads.includes(p.list_lead ?? '')) return false;
-    if (req.companies.length && !req.companies.includes(p.company_name)) return false;
+    if (req.brand_ids.length && !(p.brand && req.brand_ids.includes(p.brand.id))) return false;
     if (req.created_from && (p.created_at ?? '') < req.created_from) return false;
     if (req.created_to && (p.created_at ?? '') > `${req.created_to}T23:59:59Z`) return false;
     if (req.converted !== null && p.converted !== req.converted) return false;
@@ -456,13 +569,14 @@ export const mockSearch = {
       }
       if (suggestions.length >= limit) break;
     }
-    for (const b of MOCK_BRANDS) {
+    for (const b of BRAND_DIRECTORY) {
       if (suggestions.length >= limit * 2) break;
-      if (norm(b.brand).includes(q)) {
+      if (norm(b.name).includes(q)) {
         suggestions.push({
           type: 'brands',
-          id: b.brand,
-          label: b.brand,
+          // Stringified brand.id — the route param, not the name, since the FK landed.
+          id: String(b.id),
+          label: b.name,
           sublabel: `${b.campaign_count} campaigns · ${b.pitch_count} pitches`,
         });
       }
@@ -474,7 +588,7 @@ export const mockSearch = {
           type: 'campaigns',
           id: c.id,
           label: c.campaign_name,
-          sublabel: `${c.campaign_code} · ${c.brand_name}`,
+          sublabel: `${c.campaign_code} · ${c.brand?.name ?? 'unassigned'}`,
         });
       }
     }
@@ -485,7 +599,7 @@ export const mockSearch = {
           type: 'pitches',
           id: p.id,
           label: p.campaign_name,
-          sublabel: `${p.pitch_code} · ${p.company_name}`,
+          sublabel: `${p.pitch_code} · ${p.brand?.name ?? 'unassigned'}`,
         });
       }
     }
@@ -512,9 +626,9 @@ export const mockFacets = {
   brands(signal?: AbortSignal): Promise<BrandFacets> {
     return delay(
       {
-        org_types: unique(MOCK_BRANDS.flatMap((b) => b.org_types)) as OrgType[],
-        platforms: unique(MOCK_BRANDS.flatMap((b) => b.platforms)) as Platform[],
-        total_brands: MOCK_BRANDS.length,
+        org_types: unique(BRAND_DIRECTORY.flatMap((b) => b.org_types)) as OrgType[],
+        platforms: unique(BRAND_DIRECTORY.flatMap((b) => b.platforms)) as Platform[],
+        total_brands: BRAND_DIRECTORY.length,
       },
       signal,
     );
@@ -527,7 +641,7 @@ export const mockFacets = {
         months: MONTHS,
         years: unique(MOCK_CAMPAIGNS.map((c) => c.year)).sort((a, b) => b - a),
         managers: unique(MOCK_CAMPAIGNS.map((c) => c.manager)).sort(),
-        brands: [...BRANDS].sort(),
+        brands: brandRefFacet(),
         total_campaigns: MOCK_CAMPAIGNS.length,
       },
       signal,
@@ -541,7 +655,7 @@ export const mockFacets = {
         platforms: unique(MOCK_PITCHES.flatMap((p) => p.platform)),
         sales_leads: [...PEOPLE].sort(),
         list_leads: [...PEOPLE].sort(),
-        companies: [...BRANDS].sort(),
+        brands: brandRefFacet(),
         total_pitches: MOCK_PITCHES.length,
       },
       signal,
@@ -564,7 +678,7 @@ export const mockDetail = {
     const pitches = MOCK_PITCHES.slice(0, 3).map((p) => ({
       pitch_id: p.id,
       pitch_code: p.pitch_code,
-      company_name: p.company_name,
+      brand: p.brand,
       campaign_name: p.campaign_name,
       platform: p.platform,
       final_cost: Math.floor((base.followers ?? 10_000) * 0.9),
@@ -575,7 +689,7 @@ export const mockDetail = {
       campaign_id: c.id,
       campaign_code: c.campaign_code,
       campaign_name: c.campaign_name,
-      brand_name: c.brand_name,
+      brand: c.brand,
       month_name: c.month_name,
       year: c.year,
       status: c.status,
@@ -600,11 +714,11 @@ export const mockDetail = {
     );
   },
 
-  brand(name: string, signal?: AbortSignal): Promise<BrandDetail> {
-    const row = MOCK_BRANDS.find((b) => b.brand.toLowerCase() === name.toLowerCase());
-    if (!row) throw new ApiError({ status: 404, detail: 'Brand not found', path: `/brands/${name}` });
-    const campaigns = MOCK_CAMPAIGNS.filter((c) => c.brand_name === row.brand);
-    const pitches = MOCK_PITCHES.filter((p) => p.company_name === row.brand);
+  brand(id: number, signal?: AbortSignal): Promise<BrandDetail> {
+    const row = BRAND_DIRECTORY.find((b) => b.id === id);
+    if (!row) throw new ApiError({ status: 404, detail: 'Brand not found', path: `/brands/${id}` });
+    const campaigns = MOCK_CAMPAIGNS.filter((c) => c.brand?.id === row.id);
+    const pitches = MOCK_PITCHES.filter((p) => p.brand?.id === row.id);
     return delay(
       {
         ...row,
@@ -632,7 +746,7 @@ export const mockDetail = {
       {
         ...row,
         pitch: row._pitchId
-          ? { id: row._pitchId, pitch_code: row._pitchCode ?? '', company_name: row.brand_name }
+          ? { id: row._pitchId, pitch_code: row._pitchCode ?? '', brand: row.brand }
           : null,
         creators,
         totals: {
@@ -655,12 +769,18 @@ export const mockDetail = {
     const linked = MOCK_CAMPAIGNS.find(
       (c) => (c as CampaignRow & { _pitchId: string | null })._pitchId === id,
     );
+    // Pitch.billing_company_id was dropped, so the company comes via brand → company.
+    const company = row.brand
+      ? (BRAND_DIRECTORY.find((b) => b.id === row.brand!.id)?.company ?? null)
+      : null;
+
     return delay(
       {
         ...row,
         campaign: linked
           ? { id: linked.id, campaign_code: linked.campaign_code, campaign_name: linked.campaign_name }
           : null,
+        company,
         creators,
         totals: {
           creator_count: creators.length,
@@ -830,7 +950,7 @@ export function emptyCampaignRequest(): CampaignSearchRequest {
     months: [],
     years: [],
     managers: [],
-    brands: [],
+    brand_ids: [],
     start_date_from: null,
     start_date_to: null,
     sort: 'relevance',
@@ -847,7 +967,7 @@ export function emptyPitchRequest(): PitchSearchRequest {
     platforms: [],
     sales_leads: [],
     list_leads: [],
-    companies: [],
+    brand_ids: [],
     created_from: null,
     created_to: null,
     converted: null,

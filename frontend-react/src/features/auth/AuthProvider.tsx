@@ -16,6 +16,12 @@ export interface AuthContextValue {
   logout: () => Promise<void>;
   /** Re-reads /auth/me — used after the Google redirect lands back here. */
   refresh: () => Promise<void>;
+  /**
+   * Adopts a session the caller already has. /auth/verify-email and
+   * /auth/reset-password both set the cookies *and* return the SessionUser, so the
+   * page can seed the cache directly instead of invalidating and refetching /auth/me.
+   */
+  setSession: (user: SessionUser) => void;
   loginError: unknown;
   isLoggingIn: boolean;
 }
@@ -74,6 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await queryClient.invalidateQueries({ queryKey: queryKeys.session });
   }, [queryClient]);
 
+  const setSession = useCallback(
+    (user: SessionUser) => {
+      queryClient.setQueryData(queryKeys.session, user);
+    },
+    [queryClient],
+  );
+
   const status: AuthStatus = useMemo(() => {
     if (sessionQuery.isPending) return 'loading';
     if (sessionQuery.data) return 'authenticated';
@@ -88,10 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login: (email, password) => loginMutation.mutateAsync({ email, password }),
       logout: () => logoutMutation.mutateAsync(),
       refresh,
+      setSession,
       loginError: loginMutation.error,
       isLoggingIn: loginMutation.isPending,
     }),
-    [status, sessionQuery.data, loginMutation, logoutMutation, refresh],
+    [status, sessionQuery.data, loginMutation, logoutMutation, refresh, setSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -101,6 +115,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function describeAuthError(error: unknown): string | null {
   if (!error) return null;
   if (error instanceof ApiError) {
+    // Check the specific code before the status: 403 covers both "wrong domain" and
+    // "not verified", and telling someone the wrong one sends them down a dead end.
+    if (error.code === 'not_verified') {
+      return 'This account has not been verified yet.';
+    }
+    if (error.code === 'invalid_token') {
+      return 'That link is no longer valid. Request a new one.';
+    }
+    if (error.code === 'rate_limited' || error.status === 429) {
+      return 'Too many attempts. Please wait a moment and try again.';
+    }
     if (error.code === 'domain_not_allowed' || error.status === 403) {
       return 'Only @ripplelinks.com accounts can sign in.';
     }

@@ -6,9 +6,11 @@
  * so screenshots and demos are reproducible.
  */
 import type {
+  BrandRef,
   CampaignCreatorRow,
   CampaignRow,
   CampaignStatus,
+  CompanyRef,
   CreatorRow,
   Month,
   OrgType,
@@ -162,31 +164,65 @@ export const MOCK_CREATOR_EXTRAS = new Map<string, { categories: string[]; langu
   ]),
 );
 
+// ─── brands and companies ────────────────────────────────────────────────────
+//
+// `Brand` is a real table now, so the fixtures model it as one: a keyed row that
+// pitches and campaigns point at by id, optionally owned by a Company.
+
+export interface MockBrand {
+  id: number;
+  name: string;
+  gstin: string | null;
+  company: CompanyRef | null;
+}
+
+export const MOCK_COMPANIES: CompanyRef[] = BRANDS.slice(0, 12).map((brand, i) => ({
+  id: (i + 1) * 10,
+  name: `${brand} Technologies Pvt Ltd`,
+  // Company.gstin is nullable now, so some genuinely have none.
+  gstin: i % 4 === 3 ? null : `27AAAAA${1000 + i * 7}A1Z${i % 10}`,
+}));
+
+export const MOCK_BRANDS: MockBrand[] = BRANDS.map((name, i) => ({
+  id: i + 1,
+  name,
+  // Brand.gstin is NOT NULL in the DB but may be the empty string.
+  gstin: i % 5 === 4 ? '' : `29BBBBB${2000 + i * 3}B1Z${i % 10}`,
+  company: i < MOCK_COMPANIES.length ? MOCK_COMPANIES[i] : null,
+}));
+
+const brandRef = (brand: MockBrand): BrandRef => ({ id: brand.id, name: brand.name });
+
+/**
+ * Nothing in the backend populates `brand_id` yet, so a sizeable share of rows
+ * deliberately carry `brand: null`. That keeps the "not linked" path exercised in
+ * the UI and the smoke test rather than only existing in theory.
+ */
+const UNLINKED_BRAND_RATE = 0.18;
+
+function maybeBrandRef(): BrandRef | null {
+  if (rng() < UNLINKED_BRAND_RATE) return null;
+  return brandRef(pick(MOCK_BRANDS));
+}
+
 // ─── pitches ─────────────────────────────────────────────────────────────────
 
 export const MOCK_PITCHES: PitchRow[] = Array.from({ length: 90 }, (_, i) => {
-  const brand = pick(BRANDS);
+  const brand = maybeBrandRef();
+  const label = brand?.name ?? 'Unassigned';
   const orgType = pick(ORG_TYPE_POOL);
   const created = new Date(2025, intBetween(0, 11), intBetween(1, 28));
   const converted = rng() < 0.62;
   return {
     id: uuid(10_000 + i),
     pitch_code: `RL-P${String(i + 101).padStart(4, '0')}-2025`,
-    company_name: brand,
-    campaign_name: `${brand} ${pick(['Launch', 'Festive', 'Always-On', 'Awareness', 'Monsoon', 'Diwali', 'Summer'])} ${pick(['Push', 'Blast', 'Campaign', 'Sprint'])}`,
+    brand,
+    campaign_name: `${label} ${pick(['Launch', 'Festive', 'Always-On', 'Awareness', 'Monsoon', 'Diwali', 'Summer'])} ${pick(['Push', 'Blast', 'Campaign', 'Sprint'])}`,
     org_type: orgType,
     requirement: pick(REQUIREMENT_POOL),
     platform: pickSome(PLATFORM_POOL, 1, 2),
     sales_lead: pick(PEOPLE),
     list_lead: pick(PEOPLE),
-    billing_company:
-      rng() < 0.8
-        ? {
-            id: (BRANDS.indexOf(brand) + 1) * 10,
-            name: `${brand} Technologies Pvt Ltd`,
-            gstin: rng() < 0.75 ? `27AAAAA${intBetween(1000, 9999)}A1Z${intBetween(0, 9)}` : '',
-          }
-        : null,
     creator_count: intBetween(0, 45),
     converted,
     spreadsheet_link: `https://docs.google.com/spreadsheets/d/pitch-${i + 101}`,
@@ -199,7 +235,9 @@ export const MOCK_PITCHES: PitchRow[] = Array.from({ length: 90 }, (_, i) => {
 
 export const MOCK_CAMPAIGNS: CampaignRow[] = Array.from({ length: 120 }, (_, i) => {
   const linkedPitch = rng() < 0.75 ? MOCK_PITCHES[Math.floor(rng() * MOCK_PITCHES.length)] : null;
-  const brand = linkedPitch?.company_name ?? pick(BRANDS);
+  // A campaign inherits its pitch's brand when it came from one — that's the shape
+  // the FK gives you, and it keeps the two consistent.
+  const brand = linkedPitch ? linkedPitch.brand : maybeBrandRef();
   const monthIndex = intBetween(0, 11);
   const year = pick([2024, 2025, 2026]);
   const start = new Date(year, monthIndex, intBetween(1, 20));
@@ -210,8 +248,10 @@ export const MOCK_CAMPAIGNS: CampaignRow[] = Array.from({ length: 120 }, (_, i) 
   return {
     id: uuid(20_000 + i),
     campaign_code: `RL-C${String(i + 201).padStart(4, '0')}`,
-    campaign_name: linkedPitch?.campaign_name ?? `${brand} ${pick(['Reels', 'Shorts', 'Hybrid'])} Drive`,
-    brand_name: brand,
+    campaign_name:
+      linkedPitch?.campaign_name ??
+      `${brand?.name ?? 'Unassigned'} ${pick(['Reels', 'Shorts', 'Hybrid'])} Drive`,
+    brand,
     manager: pick(PEOPLE),
     member_names: pickSome(PEOPLE, 1, 3),
     month_name: MONTHS[monthIndex] as Month,

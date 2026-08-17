@@ -10,11 +10,11 @@ export const brandColumns: Column<BrandRow>[] = [
     header: 'Brand',
     cell: (row) => (
       <Link
-        to={`/brands/${encodeURIComponent(row.brand)}`}
+        to={`/brands/${row.id}`}
         onClick={(event) => event.stopPropagation()}
         className="font-medium text-primary hover:underline"
       >
-        {row.brand}
+        {row.name}
       </Link>
     ),
     className: 'max-w-56 truncate',
@@ -22,12 +22,15 @@ export const brandColumns: Column<BrandRow>[] = [
   {
     id: 'company',
     header: 'Billing company',
-    cell: (row) => row.company_name ?? <span className="text-muted-foreground">not linked</span>,
+    cell: (row) =>
+      row.company?.name ?? <span className="text-muted-foreground italic">not linked</span>,
     className: 'max-w-64 truncate',
   },
   {
     id: 'gstin',
     header: 'GSTIN',
+    // The brand's own GSTIN. Its owning company has a separate one, shown on the
+    // brand detail page rather than crowded into this table.
     cell: (row) =>
       row.gstin ? (
         <span className="font-mono text-xs">{row.gstin}</span>
