@@ -13,9 +13,11 @@ npm run dev          # http://localhost:5173
 ```
 
 It runs on fixture data out of the box (`VITE_USE_MOCKS=true`), because **most of the API
-endpoints this app needs do not exist in the backend yet**. See
-[`../PROPOSED_BACKEND_CHANGES.md`](../PROPOSED_BACKEND_CHANGES.md) for the contract to build,
-then flip `VITE_USE_MOCKS=false` to point at the real thing.
+endpoints this app needs do not exist in the backend yet**. The contract to build against is
+[`src/types/api.ts`](src/types/api.ts) for the shapes, [`src/lib/endpoints.ts`](src/lib/endpoints.ts)
+for the routes, and [`src/lib/mocks/handlers.ts`](src/lib/mocks/handlers.ts) for the filtering /
+sorting / pagination semantics the UI was built against. Once the endpoints exist, flip
+`VITE_USE_MOCKS=false` to point at the real thing.
 
 In mock mode, any `@ripplelinks.com` address with a 4+ character password signs in.
 
@@ -120,9 +122,10 @@ A few schema details the UI has to work around, all documented at the call site:
   "not linked" is the common case — every brand cell renders it explicitly rather than blank.
 - A pitch reaches its billing company *through* its brand (`Company 1─N Brand 1─N Pitch`), so the
   company appears on the brand and pitch detail pages, not on the pitch search row.
-- `Brand.name` is lowercased by a model validator, so names may arrive as `boat` rather than `boAt`.
-  The UI renders whatever the API returns — title-casing client-side would mangle `CRED` and `boAt`
-  differently, so the display casing is a backend decision.
+- `Brand.name` casing is unpredictable. The model has a lowercasing validator, but SQLModel skips
+  validation on `table=True` classes, so it never runs — names arrive however they were written
+  (`boat`, `boAt`, `BOAT`). The UI renders whatever the API returns; title-casing client-side would
+  mangle `CRED` and `boAt` differently, so display casing is a backend decision.
 - `Creator` has no `profile_url` column — `lib/format.ts` derives it from `platform` + `username`,
   and also accepts a server-computed one.
 - `TierChoices.NA` is the empty string, which can't be a select value or URL param. The UI uses a
