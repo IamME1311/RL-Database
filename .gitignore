@@ -1,8 +1,11 @@
 .venv/
 .env
+.env.local
+
 __pycache__/
 build/
-claude_*
-reactfrontend.bundle
-reactfrontend.patch
 PROPOSED_BACKEND_CHANGES.md
+
+node_modules/
+
+google_oauth_credentials*

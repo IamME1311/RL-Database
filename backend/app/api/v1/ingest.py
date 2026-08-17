@@ -18,8 +18,8 @@ class IngestType(str, Enum):
     campaign_creator = "campaign_creator"
 
 
-@router.get("/ingest_json/{type}")
-async def ingest_json(session: SessionDep, ingest_type: IngestType):
+@router.post("/apps-script/{source}")
+async def ingest_json(session: SessionDep, source: IngestType):
     client = Client()
 
     response = {
@@ -27,7 +27,7 @@ async def ingest_json(session: SessionDep, ingest_type: IngestType):
         "message" : "Something went wrong"
     }
 
-    if ingest_type == IngestType.pitch_master:
+    if source == IngestType.pitch_master:
         api_response = await client.fetch_pitch_master_data()
 
         if api_response["status"] == "error":
@@ -39,7 +39,7 @@ async def ingest_json(session: SessionDep, ingest_type: IngestType):
         data = api_response.get("data")
         response = await ingest_service.ingest_pitch_master_data(session, data)
 
-    elif ingest_type ==IngestType.campaign_master:
+    elif source ==IngestType.campaign_master:
         api_response = await client.fetch_campaign_master_data()
 
         if api_response["status"] == "error":
