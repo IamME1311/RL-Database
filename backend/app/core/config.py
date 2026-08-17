@@ -1,28 +1,64 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import computed_field, PostgresDsn, RedisDsn
+from typing import Any, Annotated
+
+from pydantic_settings import BaseSettings, SettingsConfigDict, NoDecode
+from pydantic import computed_field, PostgresDsn, RedisDsn, HttpUrl, field_validator
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file="../.env",
-        env_ignore_empty=True,
-        extra="ignore"
+        env_file="../.env", env_ignore_empty=True, extra="ignore"
     )
-    # general variables
-    DEBUG: bool = True
-    MAX_API_CALL_TIMEOUT: int = 300
-    ALLOWED_DOMAINS: set = {"ripplelinks.com"}
+    # general settings
+    ENVIRONMENT: str = "production"
 
-    # google apps script related variables, won't start without these
+    # AUTH Settings
+    ALLOWED_DOMAINS: Annotated[list[str], NoDecode] = ["ripplelinks.com"]
+    SESSION_TTL_SECONDS: int = 12 * 60 * 60  # 12 hours
+    OAUTH_STATE_TTL: int = 60 * 5                       # 5 minutes, user needs to complete google login in this timeframe
+    EMAIL_VERIFICATION_TTL: int = 24 * 60 * 60          # 24 hrs
+
+    # SMTP settings
+    SMTP_HOST: str
+    SMTP_PORT: int = 547
+    SMTP_USER: str
+    SMTP_PASSWORD: str
+    SMTP_FROM: str = "automations@ripplelinks.com"
+
+    # CORS settings
+    BACKEND_CORS_ORIGINS: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+
+    @field_validator("ALLOWED_DOMAINS", "BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def domain_parser(cls, v: Any) -> Any:
+        if v is None or v == "":
+            return list()
+        if isinstance(v, str):
+            return [d.strip().lower() for d in v.split(",") if d.strip()]
+        return v
+
+    # Frontend settings
+    FRONTEND_URL: HttpUrl = "http://localhost:5173"
+
+    # google apps script settings, won't start without these
     APPS_SCRIPT_API_SECRET: str
-    APPS_SCRIPT_API_URL: str
+    APPS_SCRIPT_API_URL: HttpUrl
+    APPS_SCRIPT_API_CALL_TIMEOUT: int = 300
 
-    # DB variables
+    # google OAuth settings
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+    GOOGLE_REDIRECT_URI: str
+    GOOGLE_AUTH_URL: str = "https://accounts.google.com/o/oauth2/v2/auth"
+    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
+
+    # DB settings
     DB_TYPE: str = "postgresql"
     DB_DRIVER: str = "asyncpg"
-    DB_HOST: str = "127.0.0.1"
+    DB_DRIVER_MIGRATION: str = "psycopg2"
+    DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     DB_USERNAME: str = ""
-    DB_PASSWORD: str =""
+    DB_PASSWORD: str = ""
     DB_NAME: str = ""
 
     @computed_field
@@ -41,7 +77,7 @@ class Settings(BaseSettings):
     @property
     def DB_URL_MIGRATION(self) -> PostgresDsn:
         return PostgresDsn.build(
-            scheme=f"{self.DB_TYPE}+psycopg2",
+            scheme=f"{self.DB_TYPE}+{self.DB_DRIVER_MIGRATION}",
             host=self.DB_HOST,
             port=self.DB_PORT,
             username=self.DB_USERNAME,
@@ -49,6 +85,7 @@ class Settings(BaseSettings):
             path=self.DB_NAME,
         )
 
+    # Redis specific settings
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
 
@@ -56,10 +93,7 @@ class Settings(BaseSettings):
     @property
     def REDIS_URL(self) -> RedisDsn:
         return RedisDsn.build(
-            scheme="redis",
-            host=self.REDIS_HOST,
-            port=self.REDIS_PORT,
-            path="0"
+            scheme="redis", host=self.REDIS_HOST, port=self.REDIS_PORT, path="0"
         )
 
 
