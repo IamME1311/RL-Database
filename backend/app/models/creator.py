@@ -1,7 +1,7 @@
 from uuid import uuid4, UUID
 from typing import Optional, TYPE_CHECKING, Annotated
 
-from sqlmodel import SQLModel, Field, Relationship, String
+from sqlmodel import SQLModel, Field, Relationship, String, Index
 from sqlalchemy import Enum as SaEnum, Column
 from sqlalchemy.dialects.postgresql import ARRAY
 from pydantic import ConfigDict
@@ -58,11 +58,44 @@ class Creator(SQLModel, table=True):
     phone: str = Field(sa_column=Column(String, nullable=True))
 
     additional_emails: list[str] = Field(default=[], sa_column=Column(ARRAY(String)))
-    additional_phones: list[int] = Field(default=[], sa_column=Column(ARRAY(String)))
+    additional_phones: list[str] = Field(default=[], sa_column=Column(ARRAY(String)))
 
     affiliated_pitches: list["PitchCreatorLink"] = Relationship(
         back_populates="creator",
     )
     affiliated_campaigns: list["CampaignCreatorLink"] = Relationship(
-            back_populates="creator",
-        )
+        back_populates="creator",
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_creator_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_creator_username_trgm",
+            "username",
+            postgresql_using="gin",
+            postgresql_ops={"username": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_creator_cats_trgm",
+            "categories_raw",
+            postgresql_using="gin",
+            postgresql_ops={"categories_raw": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_creator_langs_trgm",
+            "languages_raw",
+            postgresql_using="gin",
+            postgresql_ops={"languages_raw": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_creator_city_trgm",
+            "city",
+            postgresql_using="gin",
+            postgresql_ops={"city": "gin_trgm_ops"},
+        ),
+    )

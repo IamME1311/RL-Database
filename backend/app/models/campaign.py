@@ -11,6 +11,7 @@ from .enums import CampaignStatusChoices, MonthChoices
 if TYPE_CHECKING:
     from .pitch import Pitch
     from .link_models import CampaignCreatorLink
+    from .brand import Brand
 
 
 class Campaign(SQLModel, table=True):
@@ -22,13 +23,17 @@ class Campaign(SQLModel, table=True):
     month_name: MonthChoices = Field(sa_type=SaEnum(MonthChoices), nullable=False)
     year: int
 
-    brand_name: str = Field(nullable=False)
-    campaign_name: str = Field(nullable=False)
+    brand_id: Optional[int] = Field(default=None, foreign_key="brand.id")
+    brand: Optional["Brand"] = Relationship(back_populates="campaigns")
+
+    campaign_name: str = Field(nullable=False, index=True)
     manager: str = Field(nullable=False)
     member_names: list[str] = Field(default=[], sa_column=Column(ARRAY(String)))
 
     pitch_id: UUID | None = Field(default=None, foreign_key=("pitch.id"))
-    pitch: "Pitch" = Relationship(back_populates="campaign")
+    pitch: "Pitch" = Relationship(
+        back_populates="campaign", sa_relationship_kwargs={"uselist": False}
+    )
 
     spreadsheet_link: str = Field(sa_column=Column(String, nullable=False, unique=True))
     report_link: str = Field(sa_column=Column(String, nullable=False, unique=True))

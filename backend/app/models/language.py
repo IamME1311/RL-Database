@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 class Language(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    name: str
+    name: str = Field(unique=True, nullable=False)
 
     creators: list["Creator"] = Relationship(
         back_populates="languages", link_model=LanguageCreatorLink

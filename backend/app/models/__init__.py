@@ -7,6 +7,7 @@ from .creator import Creator
 from .company import Company
 from .auth import User
 from .campaign import Campaign
+from .brand import Brand
 
 # resolving forward references to avoid circular import error
 Pitch.model_rebuild()
@@ -15,6 +16,7 @@ Language.model_rebuild()
 Creator.model_rebuild()
 Company.model_rebuild()
 Campaign.model_rebuild()
+Brand.model_rebuild()
 
 __all__ = [
     "LanguageCreatorLink",
@@ -27,5 +29,6 @@ __all__ = [
     "Pitch",
     "Company",
     "User",
-    "Campaign"
+    "Campaign",
+    "Brand"
 ]

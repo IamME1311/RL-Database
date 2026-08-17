@@ -1,6 +1,5 @@
 from uuid import uuid4, UUID
 from typing import TYPE_CHECKING, Optional
-from enum import Enum
 from datetime import datetime, timezone
 
 from sqlmodel import SQLModel, Field, Relationship
@@ -14,7 +13,7 @@ if TYPE_CHECKING:
     # This runs ONLY during static analysis/IDE linting.
     # Python completely ignores this block at runtime, breaking the circular import.
     from .link_models import PitchCreatorLink
-    from .company import Company
+    from .brand import Brand
     from .campaign import Campaign
 
 
@@ -27,11 +26,11 @@ class Pitch(SQLModel, table=True):
     pitch_code: str = Field(default=None, nullable=False, unique=True)
     org_type: OrgTypeChoices = Field(sa_type=SaEnum(OrgTypeChoices), nullable=False)
 
-    company_name: str = Field(nullable=False, index=True)
-    billing_company_id: Optional[int] = Field(default=None, foreign_key="company.id")
-    billing_company: "Company" = Relationship(back_populates="pitches")
+    brand_id: Optional[int] = Field(default=None, foreign_key="brand.id")
+    brand: Optional["Brand"] = Relationship(back_populates="pitches")
 
-    campaign_name: str = Field(nullable=False)
+    campaign_name: str = Field(nullable=False, index=True)
+
     requirement: PitchRequirementChoices = Field(
         sa_type=SaEnum(PitchRequirementChoices), nullable=False
     )
@@ -55,7 +54,7 @@ class Pitch(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=False)
     )
 
-    campaign: "Campaign" = Relationship(back_populates="pitch")
+    campaign: Optional["Campaign"] = Relationship(back_populates="pitch", sa_relationship_kwargs={"uselist": False})
 
     @field_validator("spreadsheet_link", mode="before")
     @classmethod

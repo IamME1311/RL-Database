@@ -14,7 +14,7 @@ from sqlalchemy import Column, ARRAY, String
 
 class CategoryCreatorLink(SQLModel, table=True):
     creator_id: Optional[UUID] = Field(
-        default_factory=uuid4, foreign_key="creator.id", primary_key=True
+        default=None, foreign_key="creator.id", primary_key=True
     )
     category_id: Optional[int] = Field(
         default=None, foreign_key="category.id", primary_key=True
@@ -23,7 +23,7 @@ class CategoryCreatorLink(SQLModel, table=True):
 
 class LanguageCreatorLink(SQLModel, table=True):
     creator_id: Optional[UUID] = Field(
-        default_factory=uuid4, foreign_key="creator.id", primary_key=True
+        default=None, foreign_key="creator.id", primary_key=True
     )
     language_id: Optional[int] = Field(
         default=None, foreign_key="language.id", primary_key=True
@@ -32,7 +32,7 @@ class LanguageCreatorLink(SQLModel, table=True):
 
 class PitchCreatorLink(SQLModel, table=True):
     creator_id: Optional[UUID] = Field(
-        default_factory=uuid4, foreign_key="creator.id", primary_key=True
+        default=None, foreign_key="creator.id", primary_key=True
     )
     pitch_id: Optional[UUID] = Field(
         default=None, foreign_key="pitch.id", primary_key=True

@@ -6,7 +6,7 @@ from sqlalchemy import CheckConstraint
 from pydantic import field_validator
 
 if TYPE_CHECKING:
-    from .pitch import Pitch
+    from .brand import Brand
 
 
 GSTIN_REGEX = r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$"
@@ -22,15 +22,14 @@ class Company(SQLModel, table=True):
     )
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
-    gstin: str = Field(
-        default="",
+    gstin: Optional[str] = Field(
+        default=None,
         sa_column_kwargs={
-            "server_default": text("''"),
+            "server_default": text("NULL"),
         },
         schema_extra={"placeholder": "27AAAAA1111A1Z1"},
+        nullable=True
     )
-
-    pitches: list["Pitch"] = Relationship(back_populates="billing_company")
 
     @field_validator("gstin")
     @classmethod
@@ -41,3 +40,5 @@ class Company(SQLModel, table=True):
         if not re.match(GSTIN_REGEX, upper_val):
             raise ValueError("Invalid GSTIN format structure")
         return upper_val
+
+    brands: list["Brand"] = Relationship(back_populates="company")
