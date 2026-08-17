@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # SMTP settings
     SMTP_HOST: str
-    SMTP_PORT: int = 547
+    SMTP_PORT: int = 587
     SMTP_USER: str
     SMTP_PASSWORD: str
     SMTP_FROM: str = "automations@ripplelinks.com"
