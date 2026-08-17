@@ -9,6 +9,12 @@ from app.core.redis_client import get_redis
 from app.models import User
 from app.core.security import read_session
 
+# --- Dependencies (functions defined elsewhere) ---
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+RedisDep = Annotated[redis.Redis, Depends(get_redis)]
+
+
 # --- Dependency logic ---
 async def get_current_user(
     request: Request, session: SessionDep, redis: RedisDep
@@ -35,7 +41,7 @@ async def get_current_user(
 
 async def verify_csrf(request: Request) -> None:
     cookie_token = request.cookies.get("csrf_token")
-    header_token = request.cookies.get("X-CSRF-Token")
+    header_token = request.headers.get("X-CSRF-Token")
 
     if not cookie_token or not header_token or cookie_token != header_token:
         raise HTTPException(
@@ -44,9 +50,7 @@ async def verify_csrf(request: Request) -> None:
         )
 
 
-# --- Dependencies ---
+# --- Dependencies (defined here) ---
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
-RedisDep = Annotated[redis.Redis, Depends(get_redis)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CSRFProtected = Depends(verify_csrf)
