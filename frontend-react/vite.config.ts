@@ -14,6 +14,7 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   server: {
+    // allowedHosts:['sneak-afternoon-palatable.ngrok-free.dev'],
     port: 5173,
     proxy: {
       '/api': {
