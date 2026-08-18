@@ -3,52 +3,56 @@ import json
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import SessionDep
-from app.services.apps_script_client import Client
+from app.api.deps import SessionDep, CurrentUser
 from app.services.ingest import Ingest
+from app.schemas.ingest import IngestSourceInfo, IngestSource
 
 router = APIRouter()
 
 ingest_service = Ingest()
+
 
 class IngestType(str, Enum):
     pitch_master = "pitch_master"
     pitch_creator = "pitch_creator"
     campaign_master = "campaign_master"
     campaign_creator = "campaign_creator"
+    brands = "brands"
 
 
-@router.post("/apps-script/{source}")
-async def ingest_json(session: SessionDep, source: IngestType):
-    client = Client()
+@router.get("/sources")
+async def ingest_sources(user: CurrentUser):
+    sources_data = [
+        IngestSourceInfo(
+            source=IngestSource.pitch_master,
+            label="Pitch Master",
+            apps_script_supported=False,
+            upload_supported=True,
+        ),
+        IngestSourceInfo(
+            source=IngestSource.campaign_master,
+            label="Campaign Master",
+            apps_script_supported=False,
+            upload_supported=True,
+        ),
+        IngestSourceInfo(
+            source=IngestSource.pitch_creator,
+            label="Pitch Creator",
+            apps_script_supported=False,
+            upload_supported=True,
+        ),
+        IngestSourceInfo(
+            source=IngestSource.campaign_creator,
+            label="Campaign Creator",
+            apps_script_supported=False,
+            upload_supported=True,
+        ),
+        IngestSourceInfo(
+            source=IngestSource.brands,
+            label="Brands",
+            apps_script_supported=False,
+            upload_supported=True,
+        )
+    ]
 
-    response = {
-        "status" : "Failed",
-        "message" : "Something went wrong"
-    }
-
-    if source == IngestType.pitch_master:
-        api_response = await client.fetch_pitch_master_data()
-
-        if api_response["status"] == "error":
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=api_response["message"],
-            )
-
-        data = api_response.get("data")
-        response = await ingest_service.ingest_pitch_master_data(session, data)
-
-    elif source ==IngestType.campaign_master:
-        api_response = await client.fetch_campaign_master_data()
-
-        if api_response["status"] == "error":
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=api_response["message"],
-            )
-
-        data = api_response.get("data")
-        response = await ingest_service.ingest_campaign_master_data(session, data)
-
-    return response
+    return {"sources": sources_data}

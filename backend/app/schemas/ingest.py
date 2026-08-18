@@ -1,8 +1,67 @@
-from datetime import date
+from typing import Literal, Optional
+from datetime import date, datetime
+from uuid import UUID
 
 from pydantic import BaseModel, HttpUrl
 
 from app.models.enums import *
+
+class IngestSource(str, Enum):
+    pitch_master = "pitch_master"
+    pitch_creator = "pitch_creator"
+    campaign_master = "campaign_master"
+    campaign_creator = "campaign_creator"
+    brands = "brands"
+
+class IngestJobStatus(str, Enum):
+    QUEUED="queued"
+    RUNNING="running"
+    SUCCESS="success"
+    PARTIAL_SUCCESS="partial_success"
+    FAILED="FAILED"
+
+class IngestCounts(BaseModel):
+    received: int
+    inserted: int
+    updated: int
+    skipped: int
+    failed: int
+
+class IngestRowError(BaseModel):
+    row: int
+    field: Optional[str] = None
+    message: str
+    code: Optional[str] = None
+
+class IngestJob(BaseModel):
+    job_id: UUID
+    source: IngestSource
+    origin: Literal["apps_script", "upload"]
+    status: IngestJobStatus
+    dry_run: bool
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    started_by: Optional[str] = None
+    counts: IngestCounts
+    errors: list[IngestRowError]
+    message: Optional[str] = None
+
+class IngestJobList(BaseModel):
+    jobs: list[IngestJob]
+
+
+class IngestSourceInfo(BaseModel):
+    source: IngestSource
+    label: str
+    apps_script_supported: bool = False
+    upload_supported: bool = False
+    last_job: Optional[IngestJob] = None
+    row_count: Optional[int] = None
+
+
+##############################################################################################################################
+##############################################################################################################################
+
 
 # Pitch Master
 class Pitch(BaseModel):
