@@ -605,7 +605,8 @@ export type IngestSource =
   | 'pitch_master'
   | 'campaign_master'
   | 'pitch_creator'
-  | 'campaign_creator';
+  | 'campaign_creator'
+  | 'brands';
 
 export interface IngestSourceInfo {
   source: IngestSource;
