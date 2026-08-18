@@ -59,13 +59,15 @@ function readCsrfToken(): string | null {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   /** Passed through from TanStack Query's queryFn so superseded requests abort. */
   signal?: AbortSignal;
   /** Multipart uploads set their own Content-Type via FormData. */
   formData?: FormData;
   query?: Record<string, string | number | boolean | undefined | null>;
+  /** Skip the global 401→login redirect; the caller treats 401 as a valid answer. */
+  suppressUnauthorizedRedirect?: boolean;
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
@@ -114,7 +116,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (response.status === 401) {
-    onUnauthorized?.();
+    if (!options.suppressUnauthorizedRedirect) onUnauthorized?.();
     throw new ApiError({ status: 401, detail: 'Your session has expired.', path });
   }
 

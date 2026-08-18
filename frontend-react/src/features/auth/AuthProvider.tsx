@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const sessionQuery = useQuery({
     queryKey: queryKeys.session,
-    queryFn: ({ signal }) => authApi.me({ signal }),
+    queryFn: ({ signal }) => authApi.me({ signal, suppressUnauthorizedRedirect: true }),
     retry: false,
     staleTime: 5 * 60_000,
     // A 401 here is the expected "not logged in" answer, not an error to surface.

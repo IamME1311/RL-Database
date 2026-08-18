@@ -5,14 +5,14 @@
  * by VITE_USE_MOCKS. Components and hooks never branch on that flag themselves —
  * flipping to the real backend is one env var and no code change.
  */
-import { USE_MOCKS, api } from './api-client';
+import { USE_MOCKS, api } from "./api-client";
 import {
   mockAuth,
   mockDetail,
   mockFacets,
   mockIngest,
   mockSearch,
-} from './mocks/handlers';
+} from "./mocks/handlers";
 import type {
   BrandDetail,
   BrandFacets,
@@ -38,7 +38,7 @@ import type {
   SessionUser,
   SignUpRequest,
   SuggestResponse,
-} from '@/types/api';
+} from "@/types/api";
 
 interface Ctx {
   signal?: AbortSignal;
@@ -51,40 +51,54 @@ interface Ctx {
 // if the final names differ, renaming them is a single-file edit.
 
 export const authApi = {
-  me: ({ signal }: Ctx = {}): Promise<SessionUser> =>
-    USE_MOCKS ? mockAuth.me(signal) : api.get<SessionUser>('/auth/me', { signal }),
+  me: ({
+    signal,
+    suppressUnauthorizedRedirect,
+  }: Ctx & { suppressUnauthorizedRedirect?: boolean } = {}): Promise<SessionUser> =>
+    USE_MOCKS
+      ? mockAuth.me(signal)
+      : api.get<SessionUser>("/auth/me", {
+          signal,
+          suppressUnauthorizedRedirect,
+        }),
 
   login: (email: string, password: string): Promise<SessionUser> =>
     USE_MOCKS
       ? mockAuth.login(email, password)
-      : api.post<SessionUser>('/auth/login', { email, password }),
+      : api.post<SessionUser>("/auth/login", { email, password }),
 
   logout: (): Promise<void> =>
-    USE_MOCKS ? mockAuth.logout() : api.post<void>('/auth/logout'),
+    USE_MOCKS ? mockAuth.logout() : api.post<void>("/auth/logout"),
 
   /** 201 + SessionUser, but no session cookie — the account is unverified. */
   signup: (body: SignUpRequest): Promise<SessionUser> =>
-    USE_MOCKS ? mockAuth.signup(body) : api.post<SessionUser>('/auth/signup', body),
+    USE_MOCKS
+      ? mockAuth.signup(body)
+      : api.post<SessionUser>("/auth/signup", body),
 
   /** 200 + SessionUser AND sets the session cookies, so this logs the user in. */
   verifyEmail: (token: string): Promise<SessionUser> =>
-    USE_MOCKS ? mockAuth.verifyEmail(token) : api.post<SessionUser>('/auth/verify-email', { token }),
+    USE_MOCKS
+      ? mockAuth.verifyEmail(token)
+      : api.post<SessionUser>("/auth/verify-email", { token }),
 
   /** 204 whether or not the account exists — never surface a difference to the user. */
   resendVerification: (email: string): Promise<void> =>
     USE_MOCKS
       ? mockAuth.resendVerification(email)
-      : api.post<void>('/auth/resend-verification', { email }),
+      : api.post<void>("/auth/resend-verification", { email }),
 
   /** 204 always, same non-enumerating contract as resendVerification. */
   forgotPassword: (email: string): Promise<void> =>
-    USE_MOCKS ? mockAuth.forgotPassword(email) : api.post<void>('/auth/forgot-password', { email }),
+    USE_MOCKS
+      ? mockAuth.forgotPassword(email)
+      : api.post<void>("/auth/forgot-password", { email }),
 
   /** 200 + SessionUser + cookies, and revokes the user's other sessions. */
   resetPassword: (token: string, password: string): Promise<SessionUser> =>
     USE_MOCKS
       ? mockAuth.resetPassword(token, password)
-      : api.post<SessionUser>('/auth/reset-password', { token, password }),
+      : api.post<SessionUser>("/auth/reset-password", { token, password }),
 
   /**
    * Mock-mode stand-in for the backend's Google callback having already set the
@@ -97,89 +111,154 @@ export const authApi = {
 // ─── search ──────────────────────────────────────────────────────────────────
 
 export const searchApi = {
-  global: (query: string, limit = 5, { signal }: Ctx = {}): Promise<GlobalSearchResponse> =>
+  global: (
+    query: string,
+    limit = 5,
+    { signal }: Ctx = {},
+  ): Promise<GlobalSearchResponse> =>
     USE_MOCKS
       ? mockSearch.global(query, limit, signal)
-      : api.get<GlobalSearchResponse>('/search', { signal, query: { q: query, limit } }),
+      : api.get<GlobalSearchResponse>("/search", {
+          signal,
+          query: { q: query, limit },
+        }),
 
-  suggest: (query: string, limit = 8, { signal }: Ctx = {}): Promise<SuggestResponse> =>
+  suggest: (
+    query: string,
+    limit = 8,
+    { signal }: Ctx = {},
+  ): Promise<SuggestResponse> =>
     USE_MOCKS
       ? mockSearch.suggest(query, limit, signal)
-      : api.get<SuggestResponse>('/search/suggest', { signal, query: { q: query, limit } }),
+      : api.get<SuggestResponse>("/search/suggest", {
+          signal,
+          query: { q: query, limit },
+        }),
 
-  creators: (req: CreatorSearchRequest, { signal }: Ctx = {}): Promise<SearchResponse<CreatorRow>> =>
+  creators: (
+    req: CreatorSearchRequest,
+    { signal }: Ctx = {},
+  ): Promise<SearchResponse<CreatorRow>> =>
     USE_MOCKS
       ? mockSearch.creators(req, signal)
-      : api.post<SearchResponse<CreatorRow>>('/search/creators', req, { signal }),
+      : api.post<SearchResponse<CreatorRow>>("/search/creators", req, {
+          signal,
+        }),
 
-  brands: (req: BrandSearchRequest, { signal }: Ctx = {}): Promise<SearchResponse<BrandRow>> =>
+  brands: (
+    req: BrandSearchRequest,
+    { signal }: Ctx = {},
+  ): Promise<SearchResponse<BrandRow>> =>
     USE_MOCKS
       ? mockSearch.brands(req, signal)
-      : api.post<SearchResponse<BrandRow>>('/search/brands', req, { signal }),
+      : api.post<SearchResponse<BrandRow>>("/search/brands", req, { signal }),
 
-  campaigns: (req: CampaignSearchRequest, { signal }: Ctx = {}): Promise<SearchResponse<CampaignRow>> =>
+  campaigns: (
+    req: CampaignSearchRequest,
+    { signal }: Ctx = {},
+  ): Promise<SearchResponse<CampaignRow>> =>
     USE_MOCKS
       ? mockSearch.campaigns(req, signal)
-      : api.post<SearchResponse<CampaignRow>>('/search/campaigns', req, { signal }),
+      : api.post<SearchResponse<CampaignRow>>("/search/campaigns", req, {
+          signal,
+        }),
 
-  pitches: (req: PitchSearchRequest, { signal }: Ctx = {}): Promise<SearchResponse<PitchRow>> =>
+  pitches: (
+    req: PitchSearchRequest,
+    { signal }: Ctx = {},
+  ): Promise<SearchResponse<PitchRow>> =>
     USE_MOCKS
       ? mockSearch.pitches(req, signal)
-      : api.post<SearchResponse<PitchRow>>('/search/pitches', req, { signal }),
+      : api.post<SearchResponse<PitchRow>>("/search/pitches", req, { signal }),
 };
 
 // ─── facets ──────────────────────────────────────────────────────────────────
 
 export const facetsApi = {
   creators: ({ signal }: Ctx = {}): Promise<CreatorFacets> =>
-    USE_MOCKS ? mockFacets.creators(signal) : api.get<CreatorFacets>('/search/facets/creators', { signal }),
+    USE_MOCKS
+      ? mockFacets.creators(signal)
+      : api.get<CreatorFacets>("/search/facets/creators", { signal }),
   brands: ({ signal }: Ctx = {}): Promise<BrandFacets> =>
-    USE_MOCKS ? mockFacets.brands(signal) : api.get<BrandFacets>('/search/facets/brands', { signal }),
+    USE_MOCKS
+      ? mockFacets.brands(signal)
+      : api.get<BrandFacets>("/search/facets/brands", { signal }),
   campaigns: ({ signal }: Ctx = {}): Promise<CampaignFacets> =>
-    USE_MOCKS ? mockFacets.campaigns(signal) : api.get<CampaignFacets>('/search/facets/campaigns', { signal }),
+    USE_MOCKS
+      ? mockFacets.campaigns(signal)
+      : api.get<CampaignFacets>("/search/facets/campaigns", { signal }),
   pitches: ({ signal }: Ctx = {}): Promise<PitchFacets> =>
-    USE_MOCKS ? mockFacets.pitches(signal) : api.get<PitchFacets>('/search/facets/pitches', { signal }),
+    USE_MOCKS
+      ? mockFacets.pitches(signal)
+      : api.get<PitchFacets>("/search/facets/pitches", { signal }),
 };
 
 // ─── detail ──────────────────────────────────────────────────────────────────
 
 export const detailApi = {
   creator: (id: string, { signal }: Ctx = {}): Promise<CreatorDetail> =>
-    USE_MOCKS ? mockDetail.creator(id, signal) : api.get<CreatorDetail>(`/creators/${id}`, { signal }),
+    USE_MOCKS
+      ? mockDetail.creator(id, signal)
+      : api.get<CreatorDetail>(`/creators/${id}`, { signal }),
 
   brand: (id: number, { signal }: Ctx = {}): Promise<BrandDetail> =>
-    USE_MOCKS ? mockDetail.brand(id, signal) : api.get<BrandDetail>(`/brands/${id}`, { signal }),
+    USE_MOCKS
+      ? mockDetail.brand(id, signal)
+      : api.get<BrandDetail>(`/brands/${id}`, { signal }),
 
   campaign: (id: string, { signal }: Ctx = {}): Promise<CampaignDetail> =>
-    USE_MOCKS ? mockDetail.campaign(id, signal) : api.get<CampaignDetail>(`/campaigns/${id}`, { signal }),
+    USE_MOCKS
+      ? mockDetail.campaign(id, signal)
+      : api.get<CampaignDetail>(`/campaigns/${id}`, { signal }),
 
   pitch: (id: string, { signal }: Ctx = {}): Promise<PitchDetail> =>
-    USE_MOCKS ? mockDetail.pitch(id, signal) : api.get<PitchDetail>(`/pitches/${id}`, { signal }),
+    USE_MOCKS
+      ? mockDetail.pitch(id, signal)
+      : api.get<PitchDetail>(`/pitches/${id}`, { signal }),
 };
 
 // ─── ingestion ───────────────────────────────────────────────────────────────
 
 export const ingestApi = {
   sources: ({ signal }: Ctx = {}): Promise<{ sources: IngestSourceInfo[] }> =>
-    USE_MOCKS ? mockIngest.sources(signal) : api.get<{ sources: IngestSourceInfo[] }>('/ingest/sources', { signal }),
+    USE_MOCKS
+      ? mockIngest.sources(signal)
+      : api.get<{ sources: IngestSourceInfo[] }>("/ingest/sources", { signal }),
 
   jobs: ({ signal }: Ctx = {}): Promise<{ jobs: IngestJob[] }> =>
-    USE_MOCKS ? mockIngest.jobs(signal) : api.get<{ jobs: IngestJob[] }>('/ingest/jobs', { signal, query: { limit: 20 } }),
+    USE_MOCKS
+      ? mockIngest.jobs(signal)
+      : api.get<{ jobs: IngestJob[] }>("/ingest/jobs", {
+          signal,
+          query: { limit: 20 },
+        }),
 
   job: (jobId: string, { signal }: Ctx = {}): Promise<IngestJob> =>
-    USE_MOCKS ? mockIngest.job(jobId, signal) : api.get<IngestJob>(`/ingest/jobs/${jobId}`, { signal }),
+    USE_MOCKS
+      ? mockIngest.job(jobId, signal)
+      : api.get<IngestJob>(`/ingest/jobs/${jobId}`, { signal }),
 
   runAppsScript: (source: IngestSource): Promise<IngestJob> =>
-    USE_MOCKS ? mockIngest.runAppsScript(source) : api.post<IngestJob>(`/ingest/apps-script/${source}`),
+    USE_MOCKS
+      ? mockIngest.runAppsScript(source)
+      : api.post<IngestJob>(`/ingest/apps-script/${source}`),
 
-  upload: (source: IngestSource, rows: unknown[], dryRun: boolean, fileName: string): Promise<IngestJob> => {
+  upload: (
+    source: IngestSource,
+    rows: unknown[],
+    dryRun: boolean,
+    fileName: string,
+  ): Promise<IngestJob> => {
     if (USE_MOCKS) return mockIngest.upload(source, rows, dryRun);
     // Sent as a file rather than a JSON body so large exports stream, and so the
     // backend can keep the original filename on the job record.
     const formData = new FormData();
-    formData.append('file', new File([JSON.stringify(rows)], fileName, { type: 'application/json' }));
-    formData.append('source', source);
-    formData.append('dry_run', String(dryRun));
-    return api.upload<IngestJob>('/ingest/upload', formData);
+    formData.append(
+      "file",
+      new File([JSON.stringify(rows)], fileName, { type: "application/json" }),
+    );
+    formData.append("source", source);
+    formData.append("dry_run", String(dryRun));
+    return api.upload<IngestJob>("/ingest/upload", formData);
   },
 };
