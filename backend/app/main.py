@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     await pool.aclose()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="RippleLinks Database")
 
 app.add_middleware(
     CORSMiddleware,
