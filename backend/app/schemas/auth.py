@@ -1,10 +1,11 @@
 from typing import Annotated
 
-from pydantic import EmailStr, AfterValidator, BaseModel
+from pydantic import EmailStr, AfterValidator, BaseModel, Field, field_validator
 from fastapi import HTTPException, status
 
 from app.core.config import settings
 from app.models import User
+
 
 def is_domain_email(email: EmailStr) -> str:
     email = email.strip().lower()
@@ -14,25 +15,29 @@ def is_domain_email(email: EmailStr) -> str:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email domain is not allowed",
-            headers={"X-Error-Code":"domain_not_allowed"}
+            headers={"X-Error-Code": "domain_not_allowed"},
         )
     return email
 
 
 WorkEmail = Annotated[EmailStr, AfterValidator(is_domain_email)]
+ValidPassword = Annotated[str, Field(min_length=8, max_length=50)]
 
 
 class LoginRequest(BaseModel):
     email: WorkEmail
-    password: str
+    password: ValidPassword
+
 
 class SignUpRequest(BaseModel):
     name: str
     email: WorkEmail
-    password: str
+    password: ValidPassword
+
 
 class Permissions(BaseModel):
     can_ingest: bool
+
 
 class SessionUser(BaseModel):
     id: int
@@ -50,11 +55,25 @@ class SessionUser(BaseModel):
             email=user.email,
             is_verified=user.is_verified,
             auth_provider=user.auth_provider,
-            permissions=Permissions(can_ingest=user.can_ingest)
+            permissions=Permissions(can_ingest=user.can_ingest),
         )
+
 
 class VerifyEmailRequest(BaseModel):
     token: str
 
+
 class ResendVerificationRequest(BaseModel):
-    email: str
+    email: EmailStr
+
+    @field_validator("email", mode="after")
+    @classmethod
+    def normalize_email(cls, email: EmailStr) -> str:
+        return email.strip().lower()
+
+class ForgotPasswordRequest(ResendVerificationRequest):
+    pass
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: ValidPassword

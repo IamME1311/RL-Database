@@ -4,8 +4,7 @@
 
 __pycache__/
 build/
-PROPOSED_BACKEND_CHANGES.md
-
 node_modules/
 
 google_oauth_credentials*
+temp*

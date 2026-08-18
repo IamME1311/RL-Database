@@ -15,11 +15,20 @@ from app.core.security import (
     verify_password,
     create_session,
     destroy_session,
+    destroy_other_sessions,
     create_email_verification_token,
     read_email_verification_token,
     destroy_email_verification_token,
+    create_password_reset_token,
+    read_password_reset_token,
+    destory_password_reset_token,
 )
-from app.core.email import verification_email_body, send_email
+from app.core.rate_limit import check_rate_limit
+from app.core.email import (
+    verification_email_body,
+    password_reset_email_body,
+    send_email,
+)
 from app.api.deps import SessionDep, RedisDep, CurrentUser, CSRFProtected
 from app.schemas.auth import (
     SessionUser,
@@ -27,6 +36,8 @@ from app.schemas.auth import (
     SignUpRequest,
     VerifyEmailRequest,
     ResendVerificationRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 from app.models import User
 
@@ -68,7 +79,7 @@ def _validate_next(next_path: str | None) -> str:
 
 def _error_redirect(code: str) -> RedirectResponse:
     return RedirectResponse(
-        f"{settings.FRONTEND_URL}/login?auth_error={code}",
+        f"{settings.FRONTEND_URL}login?auth_error={code}",
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
 
@@ -84,9 +95,22 @@ async def me(user: CurrentUser) -> SessionUser:
     responses={403: {"description": "Domain not allowed"}},
 )
 async def login(
-    body: LoginRequest, response: Response, session: SessionDep, redis: RedisDep
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    redis: RedisDep,
 ) -> SessionUser:
     email = body.email
+
+    await check_rate_limit(redis, "login:email", email, limit=5, window=15 * 60)
+    await check_rate_limit(
+        redis,
+        "login:ip",
+        request.client.host if request.client else "unknown",
+        limit=15,
+        window=60,
+    )
 
     user = (await session.exec(select(User).where(User.email == email))).first()
 
@@ -188,9 +212,13 @@ async def google_callback(
     # Verifies signature, issuer, audience, and expiry against Google's keys.
     try:
         claims = google_id_token.verify_oauth2_token(
-            raw_id_token, google_requests.Request(), settings.GOOGLE_CLIENT_ID
+            raw_id_token,
+            google_requests.Request(),
+            settings.GOOGLE_CLIENT_ID,
+            clock_skew_in_seconds=10,       # 10 second tolerance to account for system clock and google clock time difference
         )
-    except ValueError:
+    except ValueError as e:
+        print(f"google id_token verification failed: {e}")
         return _error_redirect("unknown")
 
     email: str = claims.get("email")
@@ -215,6 +243,7 @@ async def google_callback(
             auth_provider="google",
             hashed_password=None,
             is_verified=True,
+            is_currently_employed=True,
         )
         session.add(user)
         await session.commit()
@@ -227,7 +256,7 @@ async def google_callback(
     csrf_token = new_csrf_token()
 
     response = RedirectResponse(
-        f"{settings.FRONTEND_URL}/auth/callback?next={safe_next}",
+        f"{settings.FRONTEND_URL}auth/callback?next={safe_next}",
         status_code=status.HTTP_302_FOUND,
     )
     _set_session_cookies(response, sid, csrf_token)
@@ -267,7 +296,9 @@ async def signup(
 
     if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Email already exists"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already exists",
+            headers={"X-Error-Code": "email_exists"},
         )
 
     hashed_password = hash_password(password)
@@ -284,10 +315,10 @@ async def signup(
     await session.refresh(new_user)
 
     token = await create_email_verification_token(redis, new_user.id)
-    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+    verify_url = f"{settings.FRONTEND_URL}verify-email?token={token}"
     text, html = verification_email_body(new_user.name, verify_url)
     background_tasks.add_task(
-        send_email, new_user.email, "Verify your RippleLinks account", html, text
+        send_email, new_user.email, "Verify your RippleLinks email", html, text
     )
 
     return SessionUser.from_user(new_user)
@@ -315,6 +346,7 @@ async def verify_email(
 
     if not user.is_verified:
         user.is_verified = True
+        user.is_currently_employed = True
         session.add(user)
         await session.commit()
         await session.refresh(user)
@@ -329,19 +361,122 @@ async def verify_email(
 @router.post("/resend-verification", status_code=status.HTTP_204_NO_CONTENT)
 async def resend_verification(
     body: ResendVerificationRequest,
+    request: Request,
     session: SessionDep,
     redis: RedisDep,
     background_tasks: BackgroundTasks,
 ) -> None:
     email = body.email.strip().lower()
-    user = (await session.exec(select(User).where(User.email == email))).first()
 
-    # add a resend_cooldown:{email}, setex 60s, refuse if already set to avoid spam
+    await check_rate_limit(
+        redis, "resend_verification:email", email, limit=3, window=15 * 60
+    )
+    await check_rate_limit(
+        redis,
+        "resend_verification:ip",
+        request.client.host if request.client else "unknown",
+        limit=5,
+        window=60,
+    )
+
+    user = (await session.exec(select(User).where(User.email == email))).first()
 
     if user is not None and not user.is_verified and user.auth_provider == "password":
         token = await create_email_verification_token(redis, user.id)
-        verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
+        verify_url = f"{settings.FRONTEND_URL}verify-email?token={token}"
         text, html = verification_email_body(user.name, verify_url)
         background_tasks.add_task(
-            send_email, user.email, "Verify your RippleLinks account", html, text
+            send_email,
+            user.email,
+            "Verify your RippleLinks email",
+            html,
+            text,
         )
+
+
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    session: SessionDep,
+    redis: RedisDep,
+    background_tasks: BackgroundTasks,
+) -> None:
+    email = body.email.strip().lower()
+
+    await check_rate_limit(
+        redis, "forgot_password:email", email, limit=3, window=15 * 60
+    )
+    await check_rate_limit(
+        redis,
+        "forgot_password:ip",
+        request.client.host if request.client else "unknown",
+        limit=5,
+        window=60,
+    )
+
+    user = (await session.exec(select(User).where(User.email == email))).first()
+
+    if user is not None and user.auth_provider == "password":
+        token = await create_password_reset_token(redis, user.id)
+        reset_url = f"{settings.FRONTEND_URL}reset-password?token={token}"
+        text, html = password_reset_email_body(user.name, reset_url)
+        background_tasks.add_task(
+            send_email,
+            user.email,
+            "Reset password of your RippleLinks database account",
+            html,
+            text,
+        )
+
+
+@router.post("/reset-password", response_model=SessionUser)
+async def reset_password(
+    body: ResetPasswordRequest,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    redis: RedisDep,
+) -> SessionUser:
+    await check_rate_limit(
+        redis,
+        "reset_password:ip",
+        request.client.host if request.client else "unknown",
+        limit=10,
+        window=60,
+    )
+
+    user_id = await read_password_reset_token(redis, body.token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset link",
+            headers={"X-Error-Code": "invalid_token"},
+        )
+    await destory_password_reset_token(redis, body.token)
+
+    user = await session.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset link",
+        )
+
+    if user.auth_provider != "password":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset link",
+            headers={"X-Error-Code": "invalid_token"},
+        )
+
+    user.hashed_password = hash_password(body.password)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    sid = await create_session(redis, user.id)
+    await destroy_other_sessions(redis, user.id, sid)
+    csrf_token = new_csrf_token()
+    _set_session_cookies(response, sid, csrf_token)
+
+    return SessionUser.from_user(user)

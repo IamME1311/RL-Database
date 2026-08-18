@@ -10,12 +10,14 @@ class Settings(BaseSettings):
     )
     # general settings
     ENVIRONMENT: str = "production"
+    RL_LOGO_CDN_URL: HttpUrl
 
     # AUTH Settings
     ALLOWED_DOMAINS: Annotated[list[str], NoDecode] = ["ripplelinks.com"]
     SESSION_TTL_SECONDS: int = 12 * 60 * 60  # 12 hours
-    OAUTH_STATE_TTL: int = 60 * 5                       # 5 minutes, user needs to complete google login in this timeframe
+    OAUTH_STATE_TTL: int = 5 * 60                      # 5 minutes, user needs to complete google login in this timeframe
     EMAIL_VERIFICATION_TTL: int = 24 * 60 * 60          # 24 hrs
+    PASSWORD_RESET_TTL: int = 10 * 60                    # 10 minutes, user needs to reset password in this timeframe
 
     # SMTP settings
     SMTP_HOST: str

@@ -32,7 +32,7 @@ async def get_current_user(
         )
 
     user = await session.get(User, user_id)
-    if user is None or not user.is_verified:
+    if user is None or not user.is_verified or not user.is_currently_employed:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Account unavailable"
         )
