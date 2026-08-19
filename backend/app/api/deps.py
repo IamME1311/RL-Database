@@ -54,3 +54,15 @@ async def verify_csrf(request: Request) -> None:
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CSRFProtected = Depends(verify_csrf)
+
+
+async def require_ingest(user: CurrentUser) -> User:
+    if not user.can_ingest:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not permitted to ingest",
+            headers={"X-Error-Code": "forbidden"}
+        )
+    return user
+
+IngestUser = Annotated[User, Depends(require_ingest)]
