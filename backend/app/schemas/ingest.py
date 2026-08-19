@@ -2,7 +2,7 @@ from typing import Literal, Optional
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, field_serializer
 
 from app.models.enums import *
 
@@ -76,6 +76,10 @@ class Pitch(BaseModel):
     list_lead: str
     spreadsheet_link: HttpUrl
 
+    @field_serializer("spreadsheet_link")
+    def _ser_url(self, v: HttpUrl) -> str:
+        str(HttpUrl)
+
 
 ##############################################################################################################################
 ##############################################################################################################################
@@ -101,3 +105,7 @@ class Campaign(BaseModel):
     report_completion_date: date | None = None
 
     pitch_code: str
+
+    @field_serializer("spreadsheet_link", "report_link")
+    def _ser_url(self, v: HttpUrl) -> str:
+        str(HttpUrl)
