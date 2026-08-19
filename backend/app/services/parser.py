@@ -83,8 +83,8 @@ def _pitch_code(raw: Any, year: Optional[int]) -> str:
     code = _clean(raw).upper()
     if not code:
         raise ValueError("pitch_code: missing")
-    if _YEAR_SUFFIX.search(code):
-        return code
+    if not _YEAR_SUFFIX.search(code):
+        raise ValueError(f"pitch_code: expected a -YYYY suffix, got {code!r}")
     return f"{code}-{year or date.today().year}"
 
 
