@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
 import json
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status, Query, UploadFile, File, Form
 from sqlmodel import select, col, func
 
 from app.api.deps import SessionDep, IngestUser, CSRFProtected
-from app.models import InjestJob as IngestJobRow, Pitch, Campaign, Brand
+from app.models import IngestJob as IngestJobRow, Pitch, Campaign, Brand
 from app.services.ingest import Ingest
 from app.services.ingest_job import record_job, job_to_schema, IngestResult
 from app.schemas.ingest import (
@@ -93,7 +94,7 @@ async def list_jobs(
 
 
 @router.get("/jobs/{job_id}", response_model=IngestJob)
-async def get_job(job_id: str, session: SessionDep, user: IngestUser):
+async def get_job(job_id: UUID, session: SessionDep, user: IngestUser):
     row = (
         await session.exec(select(IngestJobRow).where(IngestJobRow.job_id == job_id))
     ).first()
