@@ -78,7 +78,7 @@ class Pitch(BaseModel):
 
     @field_serializer("spreadsheet_link")
     def _ser_url(self, v: HttpUrl) -> str:
-        str(HttpUrl)
+        return str(v)
 
 
 ##############################################################################################################################
@@ -108,4 +108,4 @@ class Campaign(BaseModel):
 
     @field_serializer("spreadsheet_link", "report_link")
     def _ser_url(self, v: HttpUrl) -> str:
-        str(HttpUrl)
+        return str(v)
