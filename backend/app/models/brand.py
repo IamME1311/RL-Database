@@ -2,7 +2,7 @@ from typing import Optional, TYPE_CHECKING
 
 from sqlmodel import SQLModel, Field, Relationship, Index
 from sqlalchemy import CheckConstraint
-from pydantic import field_validator
+from pydantic import field_validator, ConfigDict
 
 if TYPE_CHECKING:
     from .company import Company
@@ -13,6 +13,7 @@ GSTIN_REGEX = r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$"
 
 
 class Brand(SQLModel, table=True):
+    model_config = ConfigDict(validate_assignment=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -29,8 +30,9 @@ class Brand(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(unique=True, nullable=False)
-    gstin: str = Field(
-        unique=True, schema_extra={"placeholder": "27AAAAA1111A1Z1"}, nullable=False
+    display_name: str = Field(nullable=False)
+    gstin: Optional[str] = Field(
+        unique=True, schema_extra={"placeholder": "27AAAAA1111A1Z1"}, nullable=True
     )
 
     company_id: Optional[int] = Field(default=None, foreign_key="company.id")

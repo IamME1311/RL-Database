@@ -8,6 +8,7 @@ from .company import Company
 from .auth import User
 from .campaign import Campaign
 from .brand import Brand
+from .ingest_job import InjestJob
 
 # resolving forward references to avoid circular import error
 Pitch.model_rebuild()
@@ -30,5 +31,6 @@ __all__ = [
     "Company",
     "User",
     "Campaign",
-    "Brand"
+    "Brand",
+    "InjestJob"
 ]
