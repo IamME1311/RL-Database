@@ -21,7 +21,7 @@ export function App() {
             <span className="flex size-7 items-center justify-center rounded-lg bg-primary/15 text-primary">
               <Database className="size-4" />
             </span>
-            <span className="hidden text-sm font-semibold sm:inline">RL Database</span>
+            <span className="hidden text-sm font-semibold sm:inline">Ripple Pulse</span>
           </Link>
 
           <nav className="flex items-center gap-1">

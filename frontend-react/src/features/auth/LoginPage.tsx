@@ -52,7 +52,7 @@ export function LoginPage() {
   const [mockGoogleBusy, setMockGoogleBusy] = useState(false);
 
   useEffect(() => {
-    document.title = 'Sign in · RL Database';
+    document.title = 'Sign in · Ripple Pulse';
   }, []);
 
   if (status === 'authenticated') return <Navigate to={next} replace />;
@@ -87,7 +87,7 @@ export function LoginPage() {
           <div className="flex size-11 items-center justify-center rounded-xl bg-primary/15 text-primary">
             <Database className="size-5" />
           </div>
-          <h1 className="text-lg font-semibold">Ripple Links Database</h1>
+          <h1 className="text-lg font-semibold">Ripple Pulse</h1>
           <p className="text-xs text-muted-foreground">
             Internal creator, campaign and pitch directory.
           </p>

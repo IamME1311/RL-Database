@@ -28,8 +28,9 @@ interface FieldSpec {
 
 const PITCH_MASTER_FIELDS: FieldSpec[] = [
   { name: 'pitch_code', kind: 'string', required: true },
+  { name: 'year', kind: 'number', required: true},
   { name: 'org_type', kind: 'string', required: true, vocabulary: RAW_ORG_TYPE_VALUES },
-  { name: 'company_name', kind: 'string', required: true },
+  { name: 'brand_name', kind: 'string', required: true },
   { name: 'campaign_name', kind: 'string', required: true },
   { name: 'requirement', kind: 'string', required: true, vocabulary: RAW_REQUIREMENT_VALUES },
   { name: 'platform', kind: 'string', required: true, vocabulary: RAW_PLATFORM_VALUES },

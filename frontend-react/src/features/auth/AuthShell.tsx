@@ -20,7 +20,7 @@ export function AuthShell({
   documentTitle: string;
 }) {
   useEffect(() => {
-    document.title = `${documentTitle} · RL Database`;
+    document.title = `${documentTitle} · Ripple Pulse`;
   }, [documentTitle]);
 
   return (
