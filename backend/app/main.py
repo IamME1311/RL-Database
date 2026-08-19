@@ -17,7 +17,14 @@ async def lifespan(app: FastAPI):
     await pool.aclose()
 
 
-app = FastAPI(lifespan=lifespan, title="RippleLinks Database")
+app = FastAPI(
+    lifespan=lifespan,
+    title="RippleLinks Database",
+    version="0.1.0",
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +39,6 @@ app.add_middleware(
 app.include_router(v1_router, prefix="/api/v1")
 
 
-@app.get("/api")
+@app.get("/api/home")
 async def home_route():
     return {"message": "Connected to RL Database backend!!"}
