@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from app.core.db import Session_Factory
-from app.models import InjestJob as IngestJobRow
+from app.models import IngestJob as IngestJobRow
 from app.schemas.ingest import (
     IngestCounts,
     IngestRowError,
@@ -56,7 +56,7 @@ async def record_job(
             finished_at=datetime.now(timezone.utc),
             started_by=started_by,
             received=result.counts.received,
-            inserted=result.counts.received,
+            inserted=result.counts.inserted,
             updated=result.counts.updated,
             skipped=result.counts.skipped,
             failed=result.counts.failed,
