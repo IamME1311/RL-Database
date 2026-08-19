@@ -21,20 +21,10 @@ async def send_email(to: str, subject: str, html_body: str, text_body: str) -> N
     )
 
 
-# def verification_email_body(name: str, verify_url: str) -> tuple[str, str]:
-#     text = f"Hi {name},\n\nVerify your RippleLinks account:\n{verify_url}\n\nThis link expires in 24 hours."
-#     html = f"""
-#     <p>Hi {name},</p>
-#     <p><a href="{verify_url}">Verify your RippleLinks account</a></p>
-#     <p>This link expires in 24 hours.</p>
-#     """
-#     return (text, html)
-
-
 def verification_email_body(name: str, verify_url: str) -> tuple[str, str]:
     text = (
         f"Hi {name},\n\n"
-        f"Verify your RippleLinks email for database account:\n{verify_url}\n\n"
+        f"Verify your RippleLinks email for Ripple Pulse account:\n{verify_url}\n\n"
         f"This link expires in 24 hours."
     )
 
@@ -44,7 +34,7 @@ def verification_email_body(name: str, verify_url: str) -> tuple[str, str]:
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Verify your RippleLinks email for database account</title>
+        <title>Verify your RippleLinks email for Ripple Pulse account</title>
         </head>
         <body style="margin:0; padding:0; background-color:#EEF3F8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EEF3F8; padding:32px 16px;">
@@ -73,7 +63,7 @@ def verification_email_body(name: str, verify_url: str) -> tuple[str, str]:
                 <tr>
                     <td align="center" style="padding:12px 40px 0 40px;">
                     <p style="margin:0; font-size:15px; line-height:1.6; color:#5B6B7C;">
-                        Hi {name}, welcome aboard. Tap the button below to verify your account and start using the database.
+                        Hi {name}, welcome aboard. Tap the button below to verify your account and start using Ripple Pulse.
                     </p>
                     </td>
                 </tr>
@@ -129,7 +119,7 @@ def verification_email_body(name: str, verify_url: str) -> tuple[str, str]:
                 <tr>
                     <td align="center" style="padding:20px 40px;">
                     <p style="margin:0; font-size:12px; color:#A9B4BF;">
-                        If you didn't create a RippleLinks database account, you can ignore this email.
+                        If you didn't create a Ripple Pulse account, you can ignore this email.
                     </p>
                     </td>
                 </tr>
@@ -147,7 +137,7 @@ def verification_email_body(name: str, verify_url: str) -> tuple[str, str]:
 def password_reset_email_body(name: str, reset_url: str) -> tuple[str, str]:
     text = (
         f"Hi {name},\n\n"
-        f"Reset password of your RippleLinks database account:\n{reset_url}\n\n"
+        f"Reset password of your Ripple Pulse account:\n{reset_url}\n\n"
         f"This link expires in 10 minutes."
     )
 
@@ -157,7 +147,7 @@ def password_reset_email_body(name: str, reset_url: str) -> tuple[str, str]:
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Reset password of your RippleLinks database account</title>
+        <title>Reset password of your Ripple Pulse account</title>
         </head>
         <body style="margin:0; padding:0; background-color:#EEF3F8; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EEF3F8; padding:32px 16px;">
@@ -242,7 +232,7 @@ def password_reset_email_body(name: str, reset_url: str) -> tuple[str, str]:
                 <tr>
                     <td align="center" style="padding:20px 40px;">
                     <p style="margin:0; font-size:12px; color:#A9B4BF;">
-                        If you have already reset the password of your RippleLinks database account, you can ignore this email.
+                        If you have already reset the password of your Ripple Pulse account, you can ignore this email.
                     </p>
                     </td>
                 </tr>

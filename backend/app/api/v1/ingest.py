@@ -141,6 +141,7 @@ async def upload(
         )
 
     started_at = datetime.now(timezone.utc)
+    started_by = user.email
     try:
         result = await handler(session, rows)
         if dry_run:
@@ -161,7 +162,7 @@ async def upload(
         source=source,
         origin="upload",
         dry_run=dry_run,
-        started_by=user.email,
+        started_by=started_by,
         started_at=started_at,
         result=result,
         file_name=file.filename,

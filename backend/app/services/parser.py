@@ -6,7 +6,7 @@ value maps to the NA member instead of raising.
 """
 
 from typing import NamedTuple, Any, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 import re
 
 from pydantic import ValidationError
@@ -20,6 +20,8 @@ from app.models.enums import (
     CampaignStatusChoices,
     MonthChoices,
 )
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 _YEAR_SUFFIX = re.compile(r"-\d{4}$")
 
@@ -83,9 +85,10 @@ def _pitch_code(raw: Any, year: Optional[int]) -> str:
     code = _clean(raw).upper()
     if not code:
         raise ValueError("pitch_code: missing")
-    if not _YEAR_SUFFIX.search(code):
-        raise ValueError(f"pitch_code: expected a -YYYY suffix, got {code!r}")
-    return f"{code}-{year or date.today().year}"
+    if _YEAR_SUFFIX.search(code): # if not _YEAR_SUFFIX.search(code) # strict mode
+        # raise ValueError(f"pitch_code: expected a -YYYY suffix, got {code!r}")  # strict mode, TODO: enable this after sheet migration
+        return code
+    return f"{code}-{year or date.today().year}" # return code, strict mode
 
 
 def _parse_date(value: Any, field: str) -> Optional[date]:
@@ -99,9 +102,12 @@ def _parse_date(value: Any, field: str) -> Optional[date]:
             continue
 
     try:
-        return datetime.fromisoformat(text).date()
+        dt = datetime.fromisoformat(text)
     except ValueError:
         raise ValueError(f"{field}: unrecognized date {text!r}")
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(IST)
+    return dt.date()
 
 
 class Parser:

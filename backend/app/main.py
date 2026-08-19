@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    title="RippleLinks Database",
+    title="Ripple Pulse",
     version="0.1.0",
     openapi_url="/api/openapi.json",
     docs_url="/api/docs",
