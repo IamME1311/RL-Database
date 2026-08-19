@@ -8,6 +8,7 @@ import { useUrlSearchState } from '@/hooks/useUrlSearchState';
 import { SCOPE_LABELS } from '@/lib/enums';
 import { cn } from '@/lib/utils';
 import { MIN_GLOBAL_QUERY_LENGTH, detailPath, useSuggestions } from './queries';
+import { SEARCH_SHORTCUT } from '@/lib/platform'
 
 /**
  * The one search box, shared by the global view and every scoped tab.
@@ -141,8 +142,8 @@ export function Omnibox({ placeholder }: { placeholder?: string }) {
             <X className="size-4" />
           </button>
         ) : (
-          <kbd className="hidden select-none rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-block">
-            ⌘K
+          <kbd className="hidden select-none rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-block whitespace-nowrap">
+            {SEARCH_SHORTCUT}
           </kbd>
         )}
       </div>

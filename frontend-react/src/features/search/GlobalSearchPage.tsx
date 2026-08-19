@@ -14,6 +14,7 @@ import { creatorColumns } from './creators/columns';
 import { brandColumns } from './brands/columns';
 import { campaignColumns } from './campaigns/columns';
 import { pitchColumns } from './pitches/columns';
+import { SEARCH_SHORTCUT } from "@/lib/platform";
 
 const PREVIEW_LIMIT = 5;
 
@@ -38,12 +39,15 @@ export function GlobalSearchPage() {
         title="Search the whole database"
         description={
           <>
-            Type at least {MIN_GLOBAL_QUERY_LENGTH} characters to search creators, brands, campaigns and
-            pitches at once — or pick a tab above to search one aspect with full filters. Press{' '}
-            <kbd className="rounded border border-border px-1 font-mono text-[10px]">⌘K</kbd> from anywhere
-            to jump to the search box.
+            Type at least {MIN_GLOBAL_QUERY_LENGTH} characters to search
+            creators, brands, campaigns and pitches at once — or pick a tab
+            above to search one aspect with full filters. Press{" "}
+            <kbd className="rounded border border-border px-1 font-mono text-[10px] whitespace-nowrap">
+              {SEARCH_SHORTCUT}
+            </kbd>{" "}
+            from anywhere to jump to the search box.
           </>
-        }
+        } /** ⌘ + K / Ctrl + K from anywhere focuses the box — this is the app's main verb. */
       />
     );
   }
