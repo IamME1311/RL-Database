@@ -9,7 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .parser import Parser
 from app.models import Brand, Pitch, Campaign
-from app.schemas.ingest import IngestCounts
+from app.schemas.ingest import IngestCounts, IngestRowError
 from app.services.ingest_job import IngestResult
 
 
@@ -127,16 +127,25 @@ class Ingest:
         }
 
         inserted = skipped = 0
-        for c in parsed:
+        for i, c in enumerate(parsed):
             if c.campaign_code in existing:
                 skipped += 1
                 continue
             payload = c.model_dump(exclude={"brand_name", "brand_display_name", "pitch_code"})
+            pitch_id=pitch_map.get(c.pitch_code)
+            if c.pitch_code and pitch_id is None:
+                errors.append(
+                    IngestRowError(
+                        row=i,
+                        field="pitch_code",
+                        message=f"No pitch found for {c.pitch_code!r}; campaign inserted unlinked",
+                    )
+                )
             session.add(
                 Campaign(
                     **payload,
                     brand_id=brand_map.get(c.brand_name),
-                    pitch_id=pitch_map.get(c.pitch_code),
+                    pitch_id=pitch_id,
                 )
             )
             inserted += 1
