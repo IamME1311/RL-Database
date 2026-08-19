@@ -7,7 +7,7 @@ from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-class InjestJob(SQLModel, table=True):
+class IngestJob(SQLModel, table=True):
     __tablename__ = "ingest_job"
 
     id: Optional[int] = Field(default=None, primary_key=True)
