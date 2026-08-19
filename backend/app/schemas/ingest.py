@@ -18,7 +18,7 @@ class IngestJobStatus(str, Enum):
     RUNNING="running"
     SUCCESS="success"
     PARTIAL_SUCCESS="partial_success"
-    FAILED="FAILED"
+    FAILED="failed"
 
 class IngestCounts(BaseModel):
     received: int
@@ -67,7 +67,8 @@ class IngestSourceInfo(BaseModel):
 class Pitch(BaseModel):
     pitch_code: str
     org_type: OrgTypeChoices
-    company_name: str
+    brand_name: str
+    brand_display_name: str
     campaign_name: str
     requirement: PitchRequirementChoices
     platform: list[PlatformChoices]
@@ -86,6 +87,7 @@ class Campaign(BaseModel):
     month_name: MonthChoices
     year: int
     brand_name: str
+    brand_display_name: str
     campaign_name: str
     manager: str
     member_names: list[str]

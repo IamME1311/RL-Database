@@ -1,9 +1,12 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 class PitchMasterRow(BaseModel):
     pitch_code: str
+    year: Optional[int] = None
     org_type: str
-    company_name: str
+    brand_name: str
     campaign_name: str
     requirement: str
     platform: str

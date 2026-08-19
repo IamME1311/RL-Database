@@ -1,95 +1,155 @@
-from fastapi import HTTPException, status
-from sqlmodel.ext.asyncio.session import AsyncSession
+"""Staged inserts for parsed ingest rows.
+
+Nothing here commits. The route owns the transaction so a dry run can roll the
+whole thing back, including the brands this creates
+"""
+
 from sqlmodel import select, col
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .parser import Parser
-from app.models import Pitch, Campaign
+from app.models import Brand, Pitch, Campaign
+from app.schemas.ingest import IngestCounts
+from app.services.ingest_job import IngestResult
 
 
 class Ingest:
     def __init__(self):
         self.parser = Parser()
 
-    async def ingest_pitch_master_data(self, session: AsyncSession, data: list[dict]):
-        parsed_pitches = await self.parser.parse_pitch_master(data)
+    async def _resolve_brands(
+        self,
+        session: AsyncSession,
+        name_map: dict[str, str],
+    ) -> dict[str, int]:
+        names = {n for n in name_map if n}
+        if not names:
+            return {}
 
-        staged = [Pitch(**p.model_dump()) for p in parsed_pitches]
+        found = {
+            b.name: b.id
+            for b in (
+                await session.exec(select(Brand).where(col(Brand.name).in_(names)))
+            ).all()
+        }
 
-        pitch_codes = [p.pitch_code for p in staged]
-        existing_res = await session.exec(
-            select(Pitch.pitch_code).where(col(Pitch.pitch_code).in_(pitch_codes))
-        )
-        existing_codes = set(existing_res.all())
-
-        new_count= 0
-        for new_p in staged:
-            # existence check
-            if new_p.pitch_code in existing_codes:
-                continue
-            new_count+=1
-            session.add(new_p)
-
-        if new_count > 0:
-            try:
-                await session.commit()
-                return {
-                    "status": "success",
-                    "message": f"Ingested {new_count} pitch_master rows",
-                }
-            except Exception as e:
-                await session.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"{e}"
+        missing = names - set(found)
+        if missing:
+            for name in missing:
+                session.add(
+                    Brand.model_validate(
+                        {
+                            "name": name,
+                            "gstin": None,
+                            "display_name": name_map.get(name),
+                        }
+                    )
                 )
-        else:
-            return {
-                "status": "partial_success",
-                "message": "Pitch Master data in correct format, but everything already exists!",
-            }
+            await session.flush()
+            found.update(
+                {
+                    b.name: b.id
+                    for b in (
+                        await session.exec(
+                            select(Brand).where(col(Brand.name).in_(missing))
+                        )
+                    ).all()
+                }
+            )
+        return found
+
+    async def ingest_pitch_master_data(
+        self, session: AsyncSession, data: list[dict]
+    ) -> IngestResult:
+        parsed, errors = await self.parser.parse_pitch_master(data)
+
+        brand_map = await self._resolve_brands(
+            session, {p.brand_name: p.brand_display_name for p in parsed}
+        )
+
+        codes = [p.pitch_code for p in parsed]
+        existing = set(
+            (
+                await session.exec(
+                    select(Pitch.pitch_code).where(col(Pitch.pitch_code).in_(codes))
+                )
+            ).all()
+        )
+
+        inserted = skipped = 0
+        for p in parsed:
+            if p.pitch_code in existing:
+                skipped += 1
+                continue
+            payload = p.model_dump(exclude={"brand_name", "brand_display_name"})
+            session.add(Pitch(**payload, brand_id=brand_map.get(p.brand_name)))
+            inserted += 1
+
+        await session.flush()
+        return IngestResult(
+            counts=IngestCounts(
+                received=len(data),
+                inserted=inserted,
+                updated=0,
+                skipped=skipped,
+                failed=len(errors),
+            ),
+            errors=errors,
+            message=f"Ingested {inserted} pitch_master rows",
+        )
 
     async def ingest_campaign_master_data(
         self, session: AsyncSession, data: list[dict]
-    ):
-        parsed_campaigns = await self.parser.parse_campaign_master(data)
+    ) -> IngestResult:
+        parsed, errors = await self.parser.parse_campaign_master(data)
 
-        staged = [(Campaign(**c.model_dump()), c.pitch_code) for c in parsed_campaigns]
+        brand_map = await self._resolve_brands(session, {c.brand_name: c.brand_display_name for c in parsed})
 
-        # batch fetch existing campaign codes
-        codes = [c.campaign_code for c, _ in staged]
-        existing_res = await session.exec(
-            select(Campaign.campaign_code).where(col(Campaign.campaign_code).in_(codes))
+        codes = [c.campaign_code for c in parsed]
+        existing = set(
+            (
+                await session.exec(
+                    select(Campaign.campaign_code).where(
+                        col(Campaign.campaign_code).in_(codes)
+                    )
+                )
+            ).all()
         )
-        existing_codes = set(existing_res.all())
 
-        # batch fetch pitches
-        pitch_codes = {p for _, p in staged if p is not None}
-        pitch_res = await session.exec(
-            select(Pitch).where(col(Pitch.pitch_code).in_(pitch_codes))
-        )
-        pitch_map = {p.pitch_code: p for p in pitch_res.all()}
+        pitch_codes = {c.pitch_code for c in parsed if c.pitch_code}
+        pitch_map = {
+            p.pitch_code: p.id
+            for p in (
+                await session.exec(
+                    select(Pitch).where(col(Pitch.pitch_code).in_(pitch_codes))
+                )
+            ).all()
+        }
 
-        new_count = 0
-        for new_c, pitch_code in staged:
-            if new_c.campaign_code in existing_codes:
+        inserted = skipped = 0
+        for c in parsed:
+            if c.campaign_code in existing:
+                skipped += 1
                 continue
-            new_c.pitch = pitch_map.get(pitch_code)
-            new_count+=1
-            session.add(new_c)  # add immediately, relationship is set right after
-
-        if new_count==0:
-            return {
-                "status": "partial_success",
-                "message": "Campaign Master data in correct format, but everything already exists!",
-            }
-
-        try:
-            await session.commit()
-            return {
-                "status": "success",
-                "message": f"Ingested {new_count} campaign_master rows",
-            }
-        except Exception as e:
-            await session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"{e}"
+            payload = c.model_dump(exclude={"brand_name", "brand_display_name", "pitch_code"})
+            session.add(
+                Campaign(
+                    **payload,
+                    brand_id=brand_map.get(c.brand_name),
+                    pitch_id=pitch_map.get(c.pitch_code),
+                )
             )
+            inserted += 1
+
+        await session.flush()
+        return IngestResult(
+            counts=IngestCounts(
+                received=len(data),
+                inserted=inserted,
+                updated=0,
+                skipped=skipped,
+                failed=len(errors),
+            ),
+            errors=errors,
+            message=f"Ingested {inserted} campaign_master rows",
+        )

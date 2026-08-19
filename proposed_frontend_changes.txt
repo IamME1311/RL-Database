@@ -1,6 +1,0 @@
--> Verification link points at the frontend, not the backend. Same reason as the OAuth callback: the email link is {FRONTEND_URL}/verify-email?token=..., a frontend page reads the token and calls POST /api/v1/auth/verify-email with token in the body.
-
--> frontend page opens from verification link also needs option of resend-verification pointing to POST /api/v1/auth/resend-verification on backend with email in the body
-
-Add new X-Error-Code to existing list of codes
-- "invalid_token", http_code=400, raised when verify_email token is not found in redis

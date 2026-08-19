@@ -1,121 +1,181 @@
+"""Raw ingest rows -> validated intermediate models.
+
+Every row is parsed independently: a bad row yiels an IngestRowError and
+is skipped rather than aborting the batch. Enum coercion is total -- an unknown
+value maps to the NA member instead of raising.
+"""
+
+from typing import NamedTuple, Any, Optional
 from datetime import date, datetime
+import re
+
+from pydantic import ValidationError
 
 from app.schemas.apps_script_response import PitchMasterRow, CampaignMasterRow
-from app.schemas.ingest import Pitch, Campaign
-from app.models.enums import *
+from app.schemas.ingest import Pitch, Campaign, IngestRowError
+from app.models.enums import (
+    OrgTypeChoices,
+    PitchRequirementChoices,
+    PlatformChoices,
+    CampaignStatusChoices,
+    MonthChoices,
+)
+
+_YEAR_SUFFIX = re.compile(r"-\d{4}$")
+
+_ORG_TYPE = {
+    "brand - core": OrgTypeChoices.BRAND_CORE,
+    "brand-core": OrgTypeChoices.BRAND_CORE,
+    "brand - other": OrgTypeChoices.BRAND_OTHER,
+    "brand-other": OrgTypeChoices.BRAND_OTHER,
+    "agency": OrgTypeChoices.AGENCY,
+    "retainer account": OrgTypeChoices.RETAINER_ACC,
+    "retainer_account": OrgTypeChoices.RETAINER_ACC,
+}
+
+_REQUIREMENT = {
+    "list": PitchRequirementChoices.LIST,
+    "plan": PitchRequirementChoices.PLAN,
+    "list and plan": PitchRequirementChoices.LIST_AND_PLAN,
+    "content buckets": PitchRequirementChoices.CONTENT_BUCKETS,
+    "media plan": PitchRequirementChoices.MEDIA_PLAN,
+    "production": PitchRequirementChoices.PRODUCTION,
+    "content buckets and list": PitchRequirementChoices.CONTENT_BUCKETS_AND_LIST,
+    "demographics/data": PitchRequirementChoices.DEMOGRAPHICS_DATA,
+}
+
+_PLATFORM = {
+    "instagram": [PlatformChoices.INSTAGRAM],
+    "insta": [PlatformChoices.INSTAGRAM],
+    "ig": [PlatformChoices.INSTAGRAM],
+    "yt": [PlatformChoices.YOUTUBE],
+    "youtube": [PlatformChoices.YOUTUBE],
+    "linkedin": [PlatformChoices.LINKEDIN],
+    "facebook": [PlatformChoices.FACEBOOK],
+    "others": [PlatformChoices.OTHERS],
+    "insta + yt": [PlatformChoices.INSTAGRAM, PlatformChoices.YOUTUBE],
+    "insta + others": [PlatformChoices.INSTAGRAM, PlatformChoices.OTHERS],
+    "yt & linkedin": [PlatformChoices.YOUTUBE, PlatformChoices.LINKEDIN],
+    "ig & linkedin": [PlatformChoices.INSTAGRAM, PlatformChoices.LINKEDIN],
+}
+
+_DATE_FORMATS = ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d.%m.%Y")
+
+
+class ParseOutcome(NamedTuple):
+    rows: list[Pitch] | list[Campaign]
+    errors: list[IngestRowError]
+
+
+def _clean(value: Any) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _key(value: Any) -> str:
+    return _clean(value).lower()
+
+
+def normalize_brand_name(raw: Any) -> str:
+    return _key(raw)
+
+
+def _pitch_code(raw: Any, year: Optional[int]) -> str:
+    code = _clean(raw).upper()
+    if not code:
+        raise ValueError("pitch_code: missing")
+    if _YEAR_SUFFIX.search(code):
+        return code
+    return f"{code}-{year or date.today().year}"
+
+
+def _parse_date(value: Any, field: str) -> Optional[date]:
+    text = _clean(value)
+    if not text:
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+
+    try:
+        return datetime.fromisoformat(text).date()
+    except ValueError:
+        raise ValueError(f"{field}: unrecognized date {text!r}")
 
 
 class Parser:
 
-    async def parse_pitch_master(self, raw_data: list[PitchMasterRow]) -> list[Pitch]:
-        clean_data = list()
-        for raw in raw_data:
-            r = PitchMasterRow.model_validate(raw)
-
-            pitch_code = f"{r.pitch_code}-{date.today().year}"
-
-            # fix org type
-            org_type_raw = r.org_type.lower().strip()
-            org_type = {
-                "brand - core": OrgTypeChoices.BRAND_CORE,
-                "brand - other": OrgTypeChoices.BRAND_OTHER,
-                "agency": OrgTypeChoices.AGENCY,
-                "retainer account": OrgTypeChoices.RETAINER_ACC,
-            }.get(org_type_raw, OrgTypeChoices.NA)
-
-            # fix requirement
-            requirement_raw = r.requirement.lower().strip()
-            requirement = {
-                "list": PitchRequirementChoices.LIST,
-                "plan": PitchRequirementChoices.PLAN,
-                "list and plan": PitchRequirementChoices.LIST_AND_PLAN,
-                "content buckets": PitchRequirementChoices.CONTENT_BUCKETS,
-                "media plan": PitchRequirementChoices.MEDIA_PLAN,
-                "production": PitchRequirementChoices.PRODUCTION,
-                "content buckets and list": PitchRequirementChoices.CONTENT_BUCKETS_AND_LIST,
-                "demographics/data": PitchRequirementChoices.DEMOGRAPHICS_DATA,
-            }.get(requirement_raw, PitchRequirementChoices.NA)
-
-            # fix platform
-            platform_raw = r.platform.lower().strip()
-            platform = {
-                "instagram": [PlatformChoices.INSTAGRAM],
-                "yt": [PlatformChoices.YOUTUBE],
-                "insta + yt": [PlatformChoices.INSTAGRAM, PlatformChoices.YOUTUBE],
-                "others": [PlatformChoices.OTHERS],
-                "insta + others": [PlatformChoices.INSTAGRAM, PlatformChoices.OTHERS],
-                "linkedin": [PlatformChoices.LINKEDIN],
-                "yt & linkedin": [PlatformChoices.YOUTUBE, PlatformChoices.LINKEDIN],
-                "ig & linkedin": [PlatformChoices.INSTAGRAM, PlatformChoices.LINKEDIN],
-            }.get(platform_raw, [PlatformChoices.NA])
-
-            clean_data.append(
-                Pitch(
-                    pitch_code=pitch_code,
-                    org_type=org_type,
-                    company_name=r.company_name,
-                    campaign_name=r.campaign_name,
-                    requirement=requirement,
-                    platform=platform,
-                    sales_lead=r.sales_lead,
-                    list_lead=r.list_lead,
-                    spreadsheet_link=r.spreadsheet_link,
+    async def parse_pitch_master(self, raw_data: list[dict]) -> ParseOutcome:
+        rows, errors = [], []
+        for i, raw in enumerate(raw_data):
+            try:
+                r = PitchMasterRow.model_validate(raw)
+                rows.append(
+                    Pitch(
+                        pitch_code=_pitch_code(r.pitch_code, r.year),
+                        org_type=_ORG_TYPE.get(_key(r.org_type), OrgTypeChoices.NA),
+                        brand_name=normalize_brand_name(r.brand_name),
+                        brand_display_name=_clean(r.brand_name),
+                        campaign_name=_clean(r.campaign_name),
+                        requirement=_REQUIREMENT.get(
+                            _key(r.requirement), PitchRequirementChoices.NA
+                        ),
+                        platform=_PLATFORM.get(_key(r.platform), [PlatformChoices.NA]),
+                        sales_lead=_clean(r.sales_lead),
+                        list_lead=_clean(r.list_lead),
+                        spreadsheet_link=str(r.spreadsheet_link),
+                    )
                 )
-            )
+            except (ValidationError, ValueError) as e:
+                errors.append(IngestRowError(row=i, message=str(e)))
+        return ParseOutcome(rows, errors)
 
-        return clean_data
+    async def parse_campaign_master(self, raw_data: list[dict]) -> ParseOutcome:
+        rows, errors = [], []
+        for i, raw in enumerate(raw_data):
+            try:
+                r = CampaignMasterRow.model_validate(raw)
 
-    async def parse_campaign_master(
-        self, raw_data: list[CampaignMasterRow]
-    ) -> list[Campaign]:
-        clean_data = list()
+                status = (
+                    CampaignStatusChoices(_key(r.status))
+                    if _key(r.status)
+                    else CampaignStatusChoices.WIP
+                )
+                if _clean(r.report_status):
+                    report_status = CampaignStatusChoices(_key(r.report_status))
+                elif status == CampaignStatusChoices.SCRAPPED:
+                    report_status = status
+                else:
+                    report_status = CampaignStatusChoices.WIP
 
-        for raw in raw_data:
-            r = CampaignMasterRow.model_validate(raw)
-
-            pitch_code = f"{r.pitch_code.strip().upper()}-{date.today().year}"
-            month_name = r.month_name.lower().strip()
-            brand_name = r.brand_name.lower().strip()
-            campaign_name = r.campaign_name.lower().strip()
-            manager = r.manager.lower().strip()
-            status = r.status.lower().strip()
-
-            if r.report_status:
-                report_status = r.report_status.lower().strip()
-            else:
-                report_status = CampaignStatusChoices.WIP
-
-            expected_end_date = datetime.fromisoformat(r.expected_end_date).date()
-            start_date = datetime.fromisoformat(r.start_date).date()
-
-            if r.end_date:
-                end_date = datetime.fromisoformat(r.end_date).date()
-            else:
-                end_date = None
-
-            if r.report_completion_date:
-                report_completion_date = datetime.fromisoformat(r.report_completion_date).date()
-            else:
-                report_completion_date = None
-
-
-            clean_data.append(Campaign(
-                campaign_code=r.campaign_code,
-                month_name=month_name,
-                year=r.year,
-                brand_name=brand_name,
-                campaign_name=campaign_name,
-                manager=manager,
-                member_names=r.member_names,
-                spreadsheet_link=r.spreadsheet_link,
-                report_link=r.report_link,
-                status=status,
-                expected_end_date=expected_end_date,
-                start_date=start_date,
-                end_date=end_date,
-                report_status=report_status,
-                report_completion_date=report_completion_date,
-                pitch_code=pitch_code
-            ))
-
-        return clean_data
+                rows.append(
+                    Campaign(
+                        campaign_code=_clean(r.campaign_code).upper(),
+                        month_name=MonthChoices(_key(r.month_name)),
+                        year=r.year,
+                        brand_name=normalize_brand_name(r.brand_name),
+                        brand_display_name=_clean(r.brand_name),
+                        campaign_name=_clean(r.campaign_name),
+                        manager=_clean(r.manager),
+                        member_names=[
+                            _clean(m) for m in (r.member_names or []) if _clean(m)
+                        ],
+                        spreadsheet_link=str(r.spreadsheet_link),
+                        report_link=str(r.report_link),
+                        status=status,
+                        expected_end_date=_parse_date(
+                            r.expected_end_date, "expected_end_date"
+                        ),
+                        start_date=_parse_date(r.start_date, "start_date"),
+                        end_date=_parse_date(r.end_date, "end_date"),
+                        report_status=report_status,
+                        report_completion_date=_parse_date(
+                            r.report_completion_date, "report_completion_date"
+                        ),
+                        pitch_code=_pitch_code(r.pitch_code, r.year),
+                    )
+                )
+            except (ValidationError, ValueError) as e:
+                errors.append(IngestRowError(row=i, message=str(e)))
+        return ParseOutcome(rows, errors)
