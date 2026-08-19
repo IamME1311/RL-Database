@@ -141,7 +141,7 @@ async def upload(
 
     started_at = datetime.now(timezone.utc)
     try:
-        result = await handler(session, raw)
+        result = await handler(session, rows)
         if dry_run:
             await session.rollback()
         else:
