@@ -5,8 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status, Query, UploadFile, File, Form
 from sqlmodel import select, col, func
 
-from app.api.deps import SessionDep, IngestUser, CSRFProtected
-from app.models import IngestJob as IngestJobRow, Pitch, Campaign, Brand
+from app.core.cache import invalidate, FACETS_PREFIX, SEARCH_PREFIX, SUGGEST_PREFIX
+from app.api.deps import SessionDep, IngestUser, CSRFProtected, RedisDep
+from app.models import IngestJob as IngestJobSQL, Pitch, Campaign, Brand
 from app.services.ingest import Ingest
 from app.services.ingest_job import record_job, job_to_schema, IngestResult
 from app.schemas.ingest import (
@@ -47,10 +48,10 @@ _HANDLERS = {
 async def ingest_sources(session: SessionDep, user: IngestUser):
     rows = (
         await session.exec(
-            select(IngestJobRow).order_by(col(IngestJobRow.started_at).desc())
+            select(IngestJobSQL).order_by(col(IngestJobSQL.started_at).desc())
         )
     ).all()
-    last_by_source: dict[str, IngestJobRow] = {}
+    last_by_source: dict[str, IngestJobSQL] = {}
     for r in rows:
         last_by_source.setdefault(r.source, r)
 
@@ -84,8 +85,8 @@ async def list_jobs(
     rows = (
         await session.exec(
             (
-                select(IngestJobRow)
-                .order_by(col(IngestJobRow.started_at).desc())
+                select(IngestJobSQL)
+                .order_by(col(IngestJobSQL.started_at).desc())
                 .limit(limit)
             )
         )
@@ -96,7 +97,7 @@ async def list_jobs(
 @router.get("/jobs/{job_id}", response_model=IngestJob)
 async def get_job(job_id: UUID, session: SessionDep, user: IngestUser):
     row = (
-        await session.exec(select(IngestJobRow).where(IngestJobRow.job_id == job_id))
+        await session.exec(select(IngestJobSQL).where(IngestJobSQL.job_id == job_id))
     ).first()
     if row is None:
         raise HTTPException(
@@ -108,6 +109,7 @@ async def get_job(job_id: UUID, session: SessionDep, user: IngestUser):
 @router.post("/upload", response_model=IngestJob, dependencies=[CSRFProtected])
 async def upload(
     session: SessionDep,
+    redis: RedisDep,
     user: IngestUser,
     file: UploadFile = File(...),
     source: IngestSource = Form(...),
@@ -157,6 +159,9 @@ async def upload(
             errors=[IngestRowError(row=0, message=str(e))],
             message="Ingest failed; no rows were written.",
         )
+    else:
+        if not dry_run: # redis should not report successful ingest as a failure
+            await invalidate(redis, FACETS_PREFIX, SEARCH_PREFIX, SUGGEST_PREFIX)
 
     row = await record_job(
         source=source,
@@ -173,5 +178,5 @@ async def upload(
 async def run_apps_script(source: IngestSource, user: IngestUser):
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Apps Script ingesr is not implemented yet - upload a JSON file instead."
+        detail="Apps Script ingest is not implemented yet - upload a JSON file instead."
     )

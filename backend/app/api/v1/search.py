@@ -1,10 +1,24 @@
 from datetime import datetime, time as dtime
+import asyncio
+from typing import Awaitable, Callable, Any
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 from sqlmodel import select, col, or_, func, exists, union, Column
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.deps import SessionDep, CurrentUser
+from app.core.cache import (
+    cached,
+    cache_key,
+    FACETS_PREFIX,
+    SUGGEST_PREFIX,
+    SEARCH_PREFIX,
+    SUGGEST_TTL,
+    FACETS_TTL,
+    SEARCH_TTL,
+)
+from app.core.db import Session_Factory
+from app.api.deps import SessionDep, CurrentUser, RedisDep
 from app.schemas.search import (
     SearchResponse,
     CreatorRow,
@@ -27,6 +41,7 @@ from app.models import (
     CampaignCreatorLink,
     PitchCreatorLink,
     Company,
+    User,
 )
 
 router = APIRouter()
@@ -294,7 +309,7 @@ async def search_brands(
 
 
 @router.post("/campaigns", response_model=SearchResponse[CampaignRow])
-async def search_campaings(
+async def search_campaigns(
     req: CampaignSearchRequest, session: SessionDep, user: CurrentUser
 ):
     with Timer() as t:
@@ -511,95 +526,113 @@ async def search_pitches(
 
 
 @router.get("/facets/creators")
-async def facets_creators(session: SessionDep, user: CurrentUser):
-    cats, langs = set(), set()
-    for raw_c, raw_l in (
-        await session.exec(select(Creator.categories_raw, Creator.languages_raw))
-    ).all():
-        cats.update(p.strip() for p in (raw_c or "").split(",") if p.strip())
-        langs.update(p.strip() for p in (raw_l or "").split(",") if p.strip())
+async def facets_creators(session: SessionDep, redis: RedisDep, user: CurrentUser):
+    async def produce():
+        cats, langs = set(), set()
+        for raw_c, raw_l in (
+            await session.exec(select(Creator.categories_raw, Creator.languages_raw))
+        ).all():
+            cats.update(p.strip() for p in (raw_c or "").split(",") if p.strip())
+            langs.update(p.strip() for p in (raw_l or "").split(",") if p.strip())
 
-    return {
-        "platforms": await _distinct(session, Creator.platform),
-        "tiers": await _distinct(session, Creator.tier),
-        "categories": sorted(cats),
-        "languages": sorted(langs),
-        "cities": await _distinct(session, Creator.city),
-        "genders": await _distinct(session, Creator.gender),
-        "total_creators": (
-            await session.exec(select(func.count()).select_from(Creator))
-        ).one(),
-    }
+        return {
+            "platforms": await _distinct(session, Creator.platform),
+            "tiers": await _distinct(session, Creator.tier),
+            "categories": sorted(cats),
+            "languages": sorted(langs),
+            "cities": await _distinct(session, Creator.city),
+            "genders": await _distinct(session, Creator.gender),
+            "total_creators": (
+                await session.exec(select(func.count()).select_from(Creator))
+            ).one(),
+        }
+
+    return await cached(
+        redis, cache_key(f"{FACETS_PREFIX}creators"), FACETS_TTL, produce
+    )
 
 
 @router.get("/facets/campaigns")
-async def facets_campaigns(session: SessionDep, user: CurrentUser):
-    brands = (
-        await session.exec(
-            select(Brand.id, Brand.display_name)
-            .join(Campaign, col(Campaign.brand_id) == col(Brand.id))
-            .distinct()
-            .order_by(Brand.display_name)
-        )
-    ).all()
-    return {
-        "statuses": await _distinct(session, Campaign.status),
-        "report_statuses": await _distinct(session, Campaign.report_status),
-        "months": await _distinct(session, Campaign.month_name),
-        "years": sorted(await _distinct(session, Campaign.year), reverse=True),
-        "managers": await _distinct(session, Campaign.manager),
-        "brands": [BrandRef(id=i, name=n) for i, n in brands],
-        "total_campaigns": (
-            await session.exec(select(func.count()).select_from(Campaign))
-        ).one(),
-    }
+async def facets_campaigns(session: SessionDep, redis: RedisDep, user: CurrentUser):
+    async def produce():
+        brands = (
+            await session.exec(
+                select(Brand.id, Brand.display_name)
+                .join(Campaign, col(Campaign.brand_id) == col(Brand.id))
+                .distinct()
+                .order_by(Brand.display_name)
+            )
+        ).all()
+        return {
+            "statuses": await _distinct(session, Campaign.status),
+            "report_statuses": await _distinct(session, Campaign.report_status),
+            "months": await _distinct(session, Campaign.month_name),
+            "years": sorted(await _distinct(session, Campaign.year), reverse=True),
+            "managers": await _distinct(session, Campaign.manager),
+            "brands": [BrandRef(id=i, name=n).model_dump() for i, n in brands],
+            "total_campaigns": (
+                await session.exec(select(func.count()).select_from(Campaign))
+            ).one(),
+        }
+
+    return await cached(
+        redis, cache_key(f"{FACETS_PREFIX}campaigns"), FACETS_TTL, produce
+    )
 
 
 @router.get("/facets/brands")
-async def facets_brands(session: SessionDep, user: CurrentUser):
-    platforms = set()
-    for arr in (
-        await session.exec(
-            select(Pitch.platform).where(col(Pitch.brand_id).is_not(None))
-        )
-    ).all():
-        platforms.update(arr or [])
+async def facets_brands(session: SessionDep, redis: RedisDep, user: CurrentUser):
+    async def produce():
+        platforms = set()
+        for arr in (
+            await session.exec(
+                select(Pitch.platform).where(col(Pitch.brand_id).is_not(None))
+            )
+        ).all():
+            platforms.update(arr or [])
 
-    return {
-        "org_types": await _distinct(
-            session, Pitch.org_type, where=col(Pitch.brand_id).is_not(None)
-        ),
-        "platforms": sorted(platforms),
-        "total_brands": (
-            await session.exec(select(func.count()).select_from(Brand))
-        ).one(),
-    }
+        return {
+            "org_types": await _distinct(
+                session, Pitch.org_type, where=col(Pitch.brand_id).is_not(None)
+            ),
+            "platforms": sorted(platforms),
+            "total_brands": (
+                await session.exec(select(func.count()).select_from(Brand))
+            ).one(),
+        }
+
+    return await cached(redis, cache_key(f"{FACETS_PREFIX}brands"), FACETS_TTL, produce)
 
 
 @router.get("/facets/pitches")
-async def facets_pitches(session: SessionDep, user: CurrentUser):
-    platforms = set()
-    for arr in (await session.exec(select(Pitch.platform))).all():
-        platforms.update(arr or [])
-    brands = (
-        await session.exec(
-            select(Brand.id, Brand.display_name)
-            .join(Pitch, col(Pitch.brand_id) == col(Brand.id))
-            .distinct()
-            .order_by(Brand.display_name)
-        )
-    ).all()
-    return {
-        "org_types": await _distinct(session, Pitch.org_type),
-        "requirements": await _distinct(session, Pitch.requirement),
-        "platforms": sorted(platforms),
-        "sales_leads": await _distinct(session, Pitch.sales_lead),
-        "list_leads": await _distinct(session, Pitch.list_lead),
-        "brands": [BrandRef(id=i, name=n) for i, n in brands],
-        "total_pitches": (
-            await session.exec(select(func.count()).select_from(Pitch))
-        ).one(),
-    }
+async def facets_pitches(session: SessionDep, redis: RedisDep, user: CurrentUser):
+    async def produce():
+        platforms = set()
+        for arr in (await session.exec(select(Pitch.platform))).all():
+            platforms.update(arr or [])
+        brands = (
+            await session.exec(
+                select(Brand.id, Brand.display_name)
+                .join(Pitch, col(Pitch.brand_id) == col(Brand.id))
+                .distinct()
+                .order_by(Brand.display_name)
+            )
+        ).all()
+        return {
+            "org_types": await _distinct(session, Pitch.org_type),
+            "requirements": await _distinct(session, Pitch.requirement),
+            "platforms": sorted(platforms),
+            "sales_leads": await _distinct(session, Pitch.sales_lead),
+            "list_leads": await _distinct(session, Pitch.list_lead),
+            "brands": [BrandRef(id=i, name=n).model_dump() for i, n in brands],
+            "total_pitches": (
+                await session.exec(select(func.count()).select_from(Pitch))
+            ).one(),
+        }
+
+    return await cached(
+        redis, cache_key(f"{FACETS_PREFIX}pitches"), FACETS_TTL, produce
+    )
 
 
 # --- Global search ---
@@ -607,43 +640,72 @@ async def facets_pitches(session: SessionDep, user: CurrentUser):
 
 @router.get("")
 async def global_search(
-    session: SessionDep,
+    redis: RedisDep,
     user: CurrentUser,
     q: str = Query(..., min_length=2),
     limit: int = Query(default=5, ge=1, le=20),
 ):
-    with Timer() as t:
-        creators = await search_creators(
-            CreatorSearchRequest(text=q, page=1, page_size=limit, sort="relevance"),
-            session,
-            user,
-        )
-        brands = await search_brands(
-            BrandSearchRequest(text=q, page=1, page_size=limit, sort="relevance"),
-            session,
-            user,
-        )
-        campaigns = await search_campaings(
-            CampaignSearchRequest(text=q, page=1, page_size=limit, sort="relevance"),
-            session,
-            user,
-        )
-        pitches = await search_pitches(
-            PitchSearchRequest(text=q, page=1, page_size=limit, sort="relevance"),
-            session,
-            user,
-        )
+    async def produce():
+        async def run(
+            handler: Callable[
+                [BaseModel, AsyncSession, User], Awaitable[Any]
+            ],
+            req: BaseModel,
+        ):
+            async with Session_Factory() as session:
+                return await handler(req, session, user)
 
-    return {
-        "query": q,
-        "took_ms": t.ms,
-        "groups": {
-            "creators": {"total": creators.total, "items": creators.rows},
-            "brands": {"total": brands.total, "items": brands.rows},
-            "pitches": {"total": pitches.total, "items": pitches.rows},
-            "campaigns": {"total": campaigns.total, "items": campaigns.rows},
-        },
-    }
+        with Timer() as t:
+            creators, brands, campaigns, pitches = await asyncio.gather(
+                run(
+                    search_creators,
+                    CreatorSearchRequest(
+                        text=q, page=1, page_size=limit, sort="relevance"
+                    ),
+                ),
+                run(
+                    search_brands,
+                    BrandSearchRequest(
+                        text=q, page=1, page_size=limit, sort="relevance"
+                    ),
+                ),
+                run(
+                    search_campaigns,
+                    CampaignSearchRequest(
+                        text=q, page=1, page_size=limit, sort="relevance"
+                    ),
+                ),
+                run(
+                    search_pitches,
+                    PitchSearchRequest(
+                        text=q, page=1, page_size=limit, sort="relevance"
+                    ),
+                ),
+            )
+
+        return {
+            "query": q,
+            "took_ms": t.ms,
+            "groups": {
+                name: {
+                    "total": res.total,
+                    "items": [r.model_dump(mode="json") for r in res.rows],
+                }
+                for name, res in (
+                    ("creators", creators),
+                    ("brands", brands),
+                    ("campaigns", campaigns),
+                    ("pitches", pitches),
+                )
+            },
+        }
+
+    return await cached(
+        redis,
+        cache_key(f"{SEARCH_PREFIX}global", {"q": q.strip().lower(), "limit": limit}),
+        SEARCH_TTL,
+        produce,
+    )
 
 
 # --- Search suggestions ---
@@ -652,96 +714,106 @@ async def global_search(
 @router.get("/suggest")
 async def suggest(
     session: SessionDep,
+    redis: RedisDep,
     user: CurrentUser,
     q: str = Query(..., min_length=1),
     limit: int = Query(default=8, ge=1, le=20),
 ):
-    prefix = f"{q.strip()}%"
-    per = max(1, limit // 4)
-    out = []
+    async def produce():
+        prefix = f"{q.strip()}%"
+        per = max(1, limit // 4)
+        out = []
 
-    for c in (
-        await session.exec(
-            select(Creator)
-            .where(
-                or_(
-                    col(Creator.name).ilike(prefix), col(Creator.username).ilike(prefix)
+        for c in (
+            await session.exec(
+                select(Creator)
+                .where(
+                    or_(
+                        col(Creator.name).ilike(prefix),
+                        col(Creator.username).ilike(prefix),
+                    )
                 )
+                .order_by(col(Creator.followers).desc().nullslast())
+                .limit(per)
             )
-            .order_by(col(Creator.followers).desc().nullslast())
-            .limit(per)
-        )
-    ).all():
-        out.append(
-            {
-                "type": "creators",
-                "id": str(c.id),
-                "label": c.name,
-                "sublabel": f"@{c.username} · {c.platform}",
-            }
-        )
+        ).all():
+            out.append(
+                {
+                    "type": "creators",
+                    "id": str(c.id),
+                    "label": c.name,
+                    "sublabel": f"@{c.username} · {c.platform}",
+                }
+            )
 
-    for b in (
-        await session.exec(
-            select(Brand)
-            .where(col(Brand.display_name).ilike(prefix))
-            .order_by(Brand.display_name)
-            .limit(per)
-        )
-    ).all():
-        out.append(
-            {
-                "type": "brands",
-                "id": str(b.id),
-                "label": b.display_name,
-                "sublabel": None,
-            }
-        )
+        for b in (
+            await session.exec(
+                select(Brand)
+                .where(col(Brand.display_name).ilike(prefix))
+                .order_by(Brand.display_name)
+                .limit(per)
+            )
+        ).all():
+            out.append(
+                {
+                    "type": "brands",
+                    "id": str(b.id),
+                    "label": b.display_name,
+                    "sublabel": None,
+                }
+            )
 
-    for c, bn in (
-        await session.exec(
-            select(Campaign, Brand.display_name)
-            .join(Brand, col(Brand.id) == col(Campaign.brand_id), isouter=True)
-            .where(
-                or_(
-                    col(Campaign.campaign_name).ilike(prefix),
-                    col(Campaign.campaign_code).ilike(prefix),
+        for c, bn in (
+            await session.exec(
+                select(Campaign, Brand.display_name)
+                .join(Brand, col(Brand.id) == col(Campaign.brand_id), isouter=True)
+                .where(
+                    or_(
+                        col(Campaign.campaign_name).ilike(prefix),
+                        col(Campaign.campaign_code).ilike(prefix),
+                    )
                 )
+                .order_by(col(Campaign.start_date).desc().nullslast())
+                .limit(per)
             )
-            .order_by(col(Campaign.start_date).desc().nullslast())
-            .limit(per)
-        )
-    ).all():
-        out.append(
-            {
-                "type": "campaigns",
-                "id": str(c.id),
-                "label": c.campaign_name,
-                "sublabel": f"{c.campaign_code}" + (f" · {bn}" if bn else ""),
-            }
-        )
+        ).all():
+            out.append(
+                {
+                    "type": "campaigns",
+                    "id": str(c.id),
+                    "label": c.campaign_name,
+                    "sublabel": f"{c.campaign_code}" + (f" · {bn}" if bn else ""),
+                }
+            )
 
-    for p, bn in (
-        await session.exec(
-            select(Pitch, Brand.display_name)
-            .join(Brand, col(Brand.id) == col(Pitch.brand_id), isouter=True)
-            .where(
-                or_(
-                    col(Pitch.campaign_name).ilike(prefix),
-                    col(Pitch.pitch_code).ilike(prefix),
+        for p, bn in (
+            await session.exec(
+                select(Pitch, Brand.display_name)
+                .join(Brand, col(Brand.id) == col(Pitch.brand_id), isouter=True)
+                .where(
+                    or_(
+                        col(Pitch.campaign_name).ilike(prefix),
+                        col(Pitch.pitch_code).ilike(prefix),
+                    )
                 )
+                .order_by(col(Pitch.created_at).desc().nullslast())
+                .limit(per)
             )
-            .order_by(col(Pitch.created_at).desc().nullslast())
-            .limit(per)
-        )
-    ).all():
-        out.append(
-            {
-                "type": "pitches",
-                "id": str(p.id),
-                "label": p.campaign_name,
-                "sublabel": f"{p.pitch_code}" + (f" · {bn}" if bn else ""),
-            }
-        )
+        ).all():
+            out.append(
+                {
+                    "type": "pitches",
+                    "id": str(p.id),
+                    "label": p.campaign_name,
+                    "sublabel": f"{p.pitch_code}" + (f" · {bn}" if bn else ""),
+                }
+            )
 
-    return {"query": q, "suggestions": out[:limit]}
+        return {"query": q, "suggestions": out[:limit]}
+
+    return await cached(
+        redis,
+        cache_key(SUGGEST_PREFIX, {"q": q.strip().lower(), "limit": limit}),
+        SUGGEST_TTL,
+        produce,
+    )
