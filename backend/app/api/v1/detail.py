@@ -1,0 +1,304 @@
+from uuid import UUID
+from typing import Optional
+from decimal import Decimal
+
+from fastapi import APIRouter, HTTPException, status
+from sqlmodel import select, col
+
+from app.api.deps import SessionDep, CurrentUser
+from app.models import *
+from app.models.enums import PlatformChoices
+from app.schemas.search import CreatorRow, CampaignRow, PitchRow, BrandRef, CompanyRef
+from app.schemas.detail import (
+    CreatorDetail,
+    CreatorPitchSummary,
+    CreatorCampaignSummary,
+    CampaignDetail,
+    PitchRef,
+    CampaignCreatorRow,
+    CampaignTotals,
+    PitchDetail,
+    PitchCreatorRow,
+    CampaignRefLite,
+    PitchTotals,
+)
+
+router = APIRouter()
+
+
+def _views_for(platform: PlatformChoices, link: CampaignCreatorLink) -> Optional[int]:
+    if platform == PlatformChoices.INSTAGRAM:
+        return link.ig_reel_views
+    if platform == PlatformChoices.YOUTUBE:
+        return link.yt_views
+    return None
+
+
+def _brand_ref(brand: Optional[Brand]) -> Optional[BrandRef]:
+    return BrandRef(id=brand.id, name=brand.display_name) if brand else None
+
+
+def _sum(values) -> Optional[int]:
+    vals = [v for v in values if v is not None]
+    return sum(vals) if vals else None
+
+
+@router.get("/creators/{creator_id}", response_model=CreatorDetail)
+async def creator_detail(creator_id: UUID, session: SessionDep, user: CurrentUser):
+    creator = await session.get(Creator, creator_id)
+    if creator is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Creator not found"
+        )
+
+    categories = (
+        await session.exec(
+            select(Category.name)
+            .join(
+                CategoryCreatorLink,
+                col(CategoryCreatorLink.category_id) == col(Category.id),
+            )
+            .where(col(CategoryCreatorLink.creator_id) == creator_id)
+            .order_by(Category.name)
+        )
+    ).all()
+
+    languages = (
+        await session.exec(
+            select(Language.name)
+            .join(
+                LanguageCreatorLink,
+                col(LanguageCreatorLink.language_id) == col(Language.id),
+            )
+            .where(col(LanguageCreatorLink.creator_id) == creator_id)
+            .order_by(Language.name)
+        )
+    ).all()
+
+    pitch_rows = (
+        await session.exec(
+            select(PitchCreatorLink, Pitch, Brand)
+            .join(
+                Pitch,
+                col(Pitch.id) == col(PitchCreatorLink.pitch_id),
+            )
+            .join(Brand, col(Brand.id) == col(Pitch.brand_id), isouter=True)
+            .where(col(PitchCreatorLink.creator_id) == creator_id)
+            .order_by(col(Pitch.created_at).desc())
+        )
+    ).all()
+
+    campaign_rows = (
+        await session.exec(
+            select(CampaignCreatorLink, Campaign, Brand)
+            .join(
+                Campaign,
+                col(Campaign.id) == col(CampaignCreatorLink.campaign_id),
+            )
+            .join(Brand, col(Brand.id) == col(Campaign.brand_id), isouter=True)
+            .where(col(CampaignCreatorLink.creator_id) == creator_id)
+            .order_by(col(Campaign.start_date).desc().nullslast())
+        )
+    ).all()
+
+    return CreatorDetail(
+        **CreatorRow.model_validate(creator, from_attributes=True).model_dump(),
+        additional_emails=creator.additional_emails or [],
+        additional_phones=[str(p) for p in (creator.additional_phones or [])],
+        categories=list(categories),
+        languages=list(languages),
+        pitches=[
+            CreatorPitchSummary(
+                pitch_id=p.id,
+                pitch_code=p.pitch_code,
+                brand=_brand_ref(b),
+                campaign_name=p.campaign_name,
+                platform=p.platform or [],
+                final_cost=link.final_cost,
+                brand_cost=link.brand_cost,
+            )
+            for link, p, b in pitch_rows
+        ],
+        campaigns=[
+            CreatorCampaignSummary(
+                campaign_id=c.id,
+                campaign_code=c.campaign_code,
+                campaign_name=c.campaign_name,
+                brand=_brand_ref(b),
+                month_name=c.month_name,
+                year=c.year,
+                status=c.status,
+                is_dropped=link.is_dropped,
+                live_date=link.live_date,
+                final_cost=link.final_cost,
+                views=_views_for(creator.platform, link),
+                cpv=link.cpv,
+            )
+            for link, c, b in campaign_rows
+        ]
+    )
+
+
+@router.get("/campaigns/{campaign_id}", response_model=CampaignDetail)
+async def campaign_detail(campaign_id: UUID, session: SessionDep, user: CurrentUser):
+    campaign = await session.get(Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found"
+        )
+
+    brand = await session.get(Brand, campaign.brand_id) if campaign.brand_id else None
+
+    pitch_ref = None
+    if campaign.pitch_id:
+        pitch = await session.get(Pitch, campaign.pitch_id)
+        if pitch:
+            pb = await session.get(Brand, pitch.brand_id) if pitch.brand_id else None
+            pitch_ref = PitchRef(
+                id=pitch.id, pitch_code=pitch.pitch_code, brand=_brand_ref(pb)
+            )
+
+    links = (
+        await session.exec(
+            select(CampaignCreatorLink, Creator)
+            .join(Creator, col(Creator.id) == col(CampaignCreatorLink.creator_id))
+            .where(col(CampaignCreatorLink.campaign_id) == campaign_id)
+            .order_by(col(Creator.followers).desc().nullslast())
+        )
+    ).all()
+
+    creators = [
+        CampaignCreatorRow(
+            creator_id=cr.id,
+            name=cr.name,
+            username=cr.username,
+            platform=cr.platform,
+            tier=cr.tier,
+            followers=cr.followers,
+            **{
+                f: getattr(lnk, f)
+                for f in CampaignCreatorRow.model_fields
+                if f
+                not in {
+                    "creator_id",
+                    "name",
+                    "username",
+                    "platform",
+                    "tier",
+                    "followers",
+                }  # got these from creator entry
+            }
+        )
+        for lnk, cr in links
+    ]
+
+    live = [(lnk, cr) for lnk, cr in links if not lnk.is_dropped]
+    cpvs = [lnk.cpv for lnk, _ in live if lnk.cpv is not None]
+
+    totals = CampaignTotals(
+        creator_count=len(links),
+        dropped_count=len(links) - len(live),
+        total_final_cost=_sum(lnk.final_cost for lnk, _ in live),
+        total_brand_cost=_sum(lnk.brand_cost for lnk, _ in live),
+        total_views=_sum(_views_for(cr.platform, lnk) for lnk, cr in live),
+        avg_cpv=(sum(cpvs) / len(cpvs)).quantize(Decimal("0.01")) if cpvs else None,
+    )
+
+    return CampaignDetail(
+        **CampaignRow(
+            id=campaign.id,
+            campaign_code=campaign.campaign_code,
+            campaign_name=campaign.campaign_name,
+            brand=_brand_ref(brand),
+            manager=campaign.manager,
+            member_names=campaign.member_names or [],
+            month_name=campaign.month_name,
+            year=campaign.year,
+            status=campaign.status,
+            report_status=campaign.report_status,
+            start_date=campaign.start_date,
+            expected_end_date=campaign.expected_end_date,
+            end_date=campaign.end_date,
+            report_completion_date=campaign.report_completion_date,
+            creator_count=len(links),
+            spreadsheet_link=campaign.spreadsheet_link,
+            report_link=campaign.report_link,
+        ).model_dump(),
+        pitch=pitch_ref,
+        creators=creators,
+        totals=totals
+    )
+
+@router.get("/pitches/{pitch_id}", response_model=PitchDetail)
+async def pitch_detail(pitch_id: UUID, session: SessionDep, user: CurrentUser):
+    pitch = await session.get(Pitch, pitch_id)
+    if pitch is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pitch not found"
+        )
+
+    brand = await session.get(Brand, pitch.brand_id) if pitch.brand_id else None
+    company = await session.get(Company, brand.company_id) if brand and brand.company_id else None
+
+    campaign = (await session.exec(
+        select(Campaign).where(col(Campaign.pitch_id) == pitch_id)
+    )).first()
+
+    links = (await session.exec(
+        select(PitchCreatorLink, Creator)
+        .join(Creator, col(Creator.id) == col(PitchCreatorLink.creator_id))
+        .where(col(PitchCreatorLink.pitch_id) == pitch_id)
+        .order_by(col(Creator.followers).desc().nullslast())
+    )).all()
+
+    creators = [
+        PitchCreatorRow(
+            creator_id=cr.id, name=cr.name, username=cr.username,
+            platform=cr.platform, tier=cr.tier, followers=cr.followers,
+            **{
+                f: getattr(lnk, f)
+                for f in PitchCreatorRow.model_fields
+                if f not in {"creator_id", "name", "username", "platform", "tier", "followers"}
+            }
+        )
+        for lnk, cr in links
+    ]
+    return PitchDetail(
+        **PitchRow(
+            id=pitch.id,
+            pitch_code=pitch.pitch_code,
+            brand=_brand_ref(brand),
+            campaign_name=pitch.campaign_name,
+            org_type=pitch.org_type,
+            requirement=pitch.requirement,
+            platform=pitch.platform or [],
+            sales_lead=pitch.sales_lead,
+            list_lead=pitch.list_lead,
+            creator_count=len(links),
+            converted=campaign is not None,
+            spreadsheet_link=pitch.spreadsheet_link,
+            created_at=pitch.created_at,
+            updated_at=pitch.updated_at,
+        ).model_dump(),
+        campaign=(
+            CampaignRefLite(
+                id=campaign.id,
+                campaign_code=campaign.campaign_code,
+                campaign_name=campaign.campaign_name,
+            )
+            if campaign
+            else None
+        ),
+        company=(
+            CompanyRef(id=company.id, name=company.name, gstin=company.gstin)
+            if company
+            else None
+        ),
+        creators=creators,
+        totals=PitchTotals(
+            creator_count=len(links),
+            total_final_cost=_sum(lnk.final_cost for lnk, _ in links),
+            total_brand_cost=_sum(lnk.brand_cost for lnk, _ in links),
+        ),
+    )
