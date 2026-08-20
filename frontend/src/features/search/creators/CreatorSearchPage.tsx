@@ -13,6 +13,7 @@ import { ResultsHeader } from '../ResultsHeader';
 import { useCreatorFacets, useCreatorSearch } from '../queries';
 import { CreatorFilters } from './CreatorFilters';
 import { creatorColumns } from './columns';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 const CSV_COLUMNS = [
   { key: 'name' as const, header: 'Name' },
@@ -30,6 +31,8 @@ const CSV_COLUMNS = [
 ];
 
 export function CreatorSearchPage() {
+  useDocumentTitle('Search');
+
   const url = useUrlSearchState();
   const navigate = useNavigate();
   const request = useCreatorRequest();

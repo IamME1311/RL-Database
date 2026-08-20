@@ -12,8 +12,11 @@ import type { IngestJob } from '@/types/api';
 import { AppsScriptPanel } from './AppsScriptPanel';
 import { JsonUploadPanel } from './JsonUploadPanel';
 import { JobStatusBadge } from './JobResult';
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export function IngestPage() {
+  useDocumentTitle("Ingest");
+
   const sourcesQuery = useQuery({
     queryKey: queryKeys.ingestSources,
     queryFn: ({ signal }) => ingestApi.sources({ signal }),

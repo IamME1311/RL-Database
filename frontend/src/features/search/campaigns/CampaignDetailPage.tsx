@@ -29,10 +29,12 @@ import {
 } from '@/lib/format';
 import type { CampaignCreatorRow } from '@/types/api';
 import { useCampaignDetail } from '../queries';
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export function CampaignDetailPage() {
   const { campaignId } = useParams<{ campaignId: string }>();
   const { data, isPending, isError, error, refetch } = useCampaignDetail(campaignId);
+  useDocumentTitle(data?.campaign_name);
 
   if (isPending) return <LoadingState label="Loading campaign…" />;
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;

@@ -28,10 +28,12 @@ import {
 import { MONTH_LABELS } from '@/lib/enums';
 import type { CreatorCampaignSummary, CreatorPitchSummary } from '@/types/api';
 import { useCreatorDetail } from '../queries';
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export function CreatorDetailPage() {
   const { creatorId } = useParams<{ creatorId: string }>();
   const { data, isPending, isError, error, refetch } = useCreatorDetail(creatorId);
+  useDocumentTitle(data?.name);
 
   if (isPending) return <LoadingState label="Loading creator…" />;
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;

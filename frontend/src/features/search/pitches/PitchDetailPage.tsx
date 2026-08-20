@@ -21,10 +21,13 @@ import {
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/format';
 import type { PitchCreatorRow } from '@/types/api';
 import { usePitchDetail } from '../queries';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 export function PitchDetailPage() {
   const { pitchId } = useParams<{ pitchId: string }>();
   const { data, isPending, isError, error, refetch } = usePitchDetail(pitchId);
+
+  useDocumentTitle(data?.pitch_code)
 
   if (isPending) return <LoadingState label="Loading pitch…" />;
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;

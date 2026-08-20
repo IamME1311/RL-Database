@@ -14,7 +14,8 @@ import { creatorColumns } from './creators/columns';
 import { brandColumns } from './brands/columns';
 import { campaignColumns } from './campaigns/columns';
 import { pitchColumns } from './pitches/columns';
-import { SEARCH_SHORTCUT } from "@/lib/platform";
+import { SEARCH_SHORTCUT } from '@/lib/platform';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 const PREVIEW_LIMIT = 5;
 
@@ -25,6 +26,8 @@ const PREVIEW_LIMIT = 5;
  * where the filters live.
  */
 export function GlobalSearchPage() {
+  useDocumentTitle('Search');
+
   const url = useUrlSearchState();
   const navigate = useNavigate();
   const query = url.getString('q');

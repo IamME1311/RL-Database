@@ -14,8 +14,11 @@ import { ResultsHeader } from '../ResultsHeader';
 import { BRAND_SORTS, SCOPE_FILTER_KEYS, countActiveFilters, useBrandRequest } from '../request-state';
 import { useBrandFacets, useBrandSearch } from '../queries';
 import { brandColumns } from './columns';
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export function BrandSearchPage() {
+  useDocumentTitle("Search");
+  
   const url = useUrlSearchState();
   const navigate = useNavigate();
   const request = useBrandRequest();

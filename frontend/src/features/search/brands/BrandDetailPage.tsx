@@ -17,6 +17,7 @@ import { campaignColumns } from '../campaigns/columns';
 import { pitchColumns } from '../pitches/columns';
 import { creatorColumns } from '../creators/columns';
 import { useBrandDetail } from '../queries';
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export function BrandDetailPage() {
   const { brandId } = useParams<{ brandId: string }>();
@@ -26,6 +27,7 @@ export function BrandDetailPage() {
   const { data, isPending, isError, error, refetch } = useBrandDetail(
     Number.isFinite(id) ? id : undefined,
   );
+  useDocumentTitle(data?.name);
 
   if (isPending) return <LoadingState label="Loading brand…" />;
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;

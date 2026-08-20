@@ -15,8 +15,11 @@ import { ResultsHeader } from '../ResultsHeader';
 import { PITCH_SORTS, SCOPE_FILTER_KEYS, countActiveFilters, usePitchRequest } from '../request-state';
 import { usePitchFacets, usePitchSearch } from '../queries';
 import { pitchColumns } from './columns';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 export function PitchSearchPage() {
+  useDocumentTitle('Search');
+
   const url = useUrlSearchState();
   const navigate = useNavigate();
   const request = usePitchRequest();

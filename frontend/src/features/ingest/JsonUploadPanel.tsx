@@ -36,15 +36,14 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
 
   const upload = useMutation({
     mutationFn: ({ rows, dryRun }: { rows: unknown[]; dryRun: boolean }) =>
       ingestApi.upload(source, rows, dryRun, fileName ?? 'upload.json'),
     onSuccess: (job) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ingestJobs });
       if (!job.dry_run) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.ingestSources });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.ingestJobs });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.ingestSources, });
         void queryClient.invalidateQueries({ queryKey: ['facets'] });
         void queryClient.invalidateQueries({ queryKey: ['search'] });
       }
@@ -55,7 +54,6 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
     setFileName(null);
     setReport(null);
     setFileError(null);
-    setConfirmed(false);
     upload.reset();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -63,7 +61,6 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
   const handleFile = async (file: File) => {
     setFileError(null);
     setReport(null);
-    setConfirmed(false);
     upload.reset();
 
     if (file.size > MAX_FILE_BYTES) {
@@ -99,16 +96,24 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
       <CardContent className="space-y-3.5">
         <div className="grid gap-3 sm:grid-cols-[minmax(0,14rem)_1fr] sm:items-end">
           <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Source</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              Source
+            </span>
             <Select
               value={source}
-              onChange={(event) => onSourceChange(event.target.value as IngestSource)}
+              onChange={(event) =>
+                onSourceChange(event.target.value as IngestSource)
+              }
               aria-label="Ingest source"
             >
               {sources.map((info) => (
-                <option key={info.source} value={info.source} disabled={!info.upload_supported}>
+                <option
+                  key={info.source}
+                  value={info.source}
+                  disabled={!info.upload_supported}
+                >
                   {info.label}
-                  {info.upload_supported ? '' : ' — not supported'}
+                  {info.upload_supported ? "" : " — not supported"}
                 </option>
               ))}
             </Select>
@@ -116,12 +121,16 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
 
           {fieldSpec && (
             <p className="text-[11px] text-muted-foreground">
-              Expecting an array of{' '}
+              Expecting an array of{" "}
               <span className="font-medium">
                 {fieldSpec.filter((field) => field.required).length} required
-              </span>{' '}
-              fields per row: <code className="font-mono">{fieldSpec.map((f) => f.name).join(', ')}</code>.
-              An object with a <code className="font-mono">data</code> array is accepted too.
+              </span>{" "}
+              fields per row:{" "}
+              <code className="font-mono">
+                {fieldSpec.map((f) => f.name).join(", ")}
+              </code>
+              . An object with a <code className="font-mono">data</code> array
+              is accepted too.
             </p>
           )}
         </div>
@@ -139,15 +148,24 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
             if (file) void handleFile(file);
           }}
           className={cn(
-            'flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-8 text-center transition-colors',
-            dragging ? 'border-primary bg-primary/5' : 'border-border',
+            "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-8 text-center transition-colors",
+            dragging ? "border-primary bg-primary/5" : "border-border",
           )}
         >
-          <UploadCloud className={cn('size-6', dragging ? 'text-primary' : 'text-muted-foreground')} />
+          <UploadCloud
+            className={cn(
+              "size-6",
+              dragging ? "text-primary" : "text-muted-foreground",
+            )}
+          />
           <p className="text-xs text-muted-foreground">
             Drop a <code className="font-mono">.json</code> file here, or
           </p>
-          <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+          >
             Choose file
           </Button>
           <input
@@ -169,11 +187,17 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
               <span className="truncate font-mono">{fileName}</span>
               {report && (
                 <Badge variant="outline">
-                  {formatNumber(report.rowCount)} {pluralise(report.rowCount, 'row')}
+                  {formatNumber(report.rowCount)}{" "}
+                  {pluralise(report.rowCount, "row")}
                 </Badge>
               )}
             </span>
-            <Button variant="ghost" size="icon-sm" onClick={reset} aria-label="Remove file">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={reset}
+              aria-label="Remove file"
+            >
               <X />
             </Button>
           </div>
@@ -195,11 +219,14 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
               variant="outline"
               disabled={upload.isPending}
               onClick={() => {
-                setConfirmed(false);
                 upload.mutate({ rows: report.rows, dryRun: true });
               }}
             >
-              {upload.isPending && !confirmed ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+              {upload.isPending && upload.variables?.dryRun ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <CheckCircle2 />
+              )}
               Dry run
             </Button>
 
@@ -207,12 +234,16 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
               size="sm"
               disabled={upload.isPending}
               onClick={() => {
-                setConfirmed(true);
                 upload.mutate({ rows: report.rows, dryRun: false });
               }}
             >
-              {upload.isPending && confirmed ? <Loader2 className="animate-spin" /> : <Upload />}
-              Ingest {formatNumber(report.rowCount)} {pluralise(report.rowCount, 'row')}
+              {upload.isPending && upload.variables?.dryRun === false ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Upload />
+              )}
+              Ingest {formatNumber(report.rowCount)}{" "}
+              {pluralise(report.rowCount, "row")}
             </Button>
 
             <span className="text-[11px] text-muted-foreground">
@@ -221,7 +252,9 @@ export function JsonUploadPanel({ sources }: { sources: IngestSourceInfo[] }) {
           </div>
         )}
 
-        {upload.isError && <ErrorState error={upload.error} onRetry={() => upload.reset()} />}
+        {upload.isError && (
+          <ErrorState error={upload.error} onRetry={() => upload.reset()} />
+        )}
         {upload.isSuccess && upload.data && <UploadOutcome job={upload.data} />}
       </CardContent>
     </Card>

@@ -14,8 +14,11 @@ import { ResultsHeader } from '../ResultsHeader';
 import { CAMPAIGN_SORTS, SCOPE_FILTER_KEYS, countActiveFilters, useCampaignRequest } from '../request-state';
 import { useCampaignFacets, useCampaignSearch } from '../queries';
 import { campaignColumns } from './columns';
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export function CampaignSearchPage() {
+  useDocumentTitle("Search");
+  
   const url = useUrlSearchState();
   const navigate = useNavigate();
   const request = useCampaignRequest();

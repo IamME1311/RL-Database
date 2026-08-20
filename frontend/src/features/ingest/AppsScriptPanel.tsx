@@ -21,12 +21,15 @@ export function AppsScriptPanel({ sources }: { sources: IngestSourceInfo[] }) {
 
   const run = useMutation({
     mutationFn: (source: IngestSource) => ingestApi.runAppsScript(source),
-    onSuccess: () => {
-      // A successful ingest changes row counts, facet vocabularies and results.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.ingestSources });
+    onSuccess: (job) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.ingestJobs });
-      void queryClient.invalidateQueries({ queryKey: ['facets'] });
-      void queryClient.invalidateQueries({ queryKey: ['search'] });
+      if (!job.dry_run){
+        // A successful ingest changes row counts, facet vocabularies and results.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.ingestSources });
+        void queryClient.invalidateQueries({ queryKey: ['facets'] });
+        void queryClient.invalidateQueries({ queryKey: ['search'] });
+      }
+      
     },
   });
 
