@@ -6,7 +6,7 @@ whole thing back, including the brands this creates
 
 from uuid import UUID
 
-from sqlmodel import select, col
+from sqlmodel import select, col, tuple_
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .parser import Parser, extract_file_id
@@ -20,6 +20,23 @@ MAX_STORED_ERRORS = 500
 class Ingest:
     def __init__(self):
         self.parser = Parser()
+
+    async def _load_creators(self, session: AsyncSession, wanted: set[tuple]) -> dict[tuple, UUID]:
+        found: dict[tuple, UUID] = {}
+
+        pairs = [(p.value if hasattr(p, "value") else p, u) for p, u in wanted]
+
+        for i in range(0, len(pairs), 1000):
+            chunk = pairs[i : i + 1000]
+            rows = (
+                await session.exec(
+                    select(Creator).where(
+                        tuple_(col(Creator.platform), col(Creator.username)).in_(chunk)
+                    )
+                )
+            ).all()
+            found.update({(c.platform, c.username): c.id for c in rows})
+        return found
 
     async def _resolve_brands(
         self,
@@ -185,52 +202,32 @@ class Ingest:
                 pitch_by_file[fid] = pid
 
         wanted = {(r.platform, r.username) for r in parsed}
-        existing: dict[tuple, UUID] = {
-            (c.platform, c.username): c.id
-            for c in (
-                await session.exec(
-                    select(Creator).where(
-                        col(Creator.username).in_({u for _, u in wanted})
-                    )
+        existing: dict[tuple, UUID] = await self._load_creators(session, wanted)
+
+        by_key = {(r.platform, r.username): r for r in parsed}
+        created = 0
+        for key in wanted - set(existing):
+            src = by_key[key]
+            session.add(
+                Creator(
+                    platform=src.platform,
+                    username=src.username,
+                    name=src.name,
+                    followers=src.followers,
+                    avg_views=src.avg_views,
+                    tier=src.tier,
+                    gender=src.gender,
+                    city=src.city,
+                    categories_raw=src.categories_raw,
+                    languages_raw=src.languages_raw,
+                    email=src.email or None,
+                    phone=src.phone or None,
                 )
             )
-        }
-
-        created = 0
-        for platform, username in wanted - set(existing):
-            src = next(
-                r for r in parsed if (r.platform, r.username) == (platform, username)
-            )
-            creator = Creator(
-                platform=platform,
-                username=username,
-                name=src.name,
-                followers=src.followers,
-                avg_views=src.avg_views,
-                tier=src.tier,
-                gender=src.gender,
-                city=src.city,
-                categories_raw=src.categories_raw,
-                languages_raw=src.languages_raw,
-                email=src.email or None,
-                phone=src.phone or None,
-            )
-            session.add(creator)
             created += 1
         if created:
             await session.flush()
-            existing.update(
-                {
-                    (c.platform, c.username): c.id
-                    for c in (
-                        await session.exec(
-                            select(Creator).where(
-                                col(Creator.username).in_({u for _, u in wanted})
-                            )
-                        )
-                    ).all()
-                }
-            )
+            existing = await self._load_creators(session, wanted)
 
         have = {
             (l.creator_id, l.pitch_id)
@@ -252,6 +249,16 @@ class Ingest:
                 continue
 
             creator_id = existing[(r.platform, r.username)]
+            if creator_id is None:
+                errors.append(
+                    IngestRowError(
+                        row=r.sheet_row,
+                        field="profile_link",
+                        severity="error",
+                        message=f"creator {r.platform.value}/{r.username} was not created",
+                    )
+                )
+                continue
             if (creator_id, pitch_id) in have:
                 skipped += 1
                 continue

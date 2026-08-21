@@ -39,7 +39,7 @@ class PitchCreatorRow(BaseModel):
     source_file_id: str
     sheet: str
     platform: str
-    sheet_row: str
+    sheet_row: Any = None
     name: str
     profile_link: str = ""
     followers: Any = None

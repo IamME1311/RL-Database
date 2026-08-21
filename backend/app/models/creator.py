@@ -1,7 +1,7 @@
 from uuid import uuid4, UUID
 from typing import Optional, TYPE_CHECKING, Annotated
 
-from sqlmodel import SQLModel, Field, Relationship, String, Index
+from sqlmodel import SQLModel, Field, Relationship, String, Index, UniqueConstraint
 from sqlalchemy import Enum as SaEnum, Column
 from sqlalchemy.dialects.postgresql import ARRAY
 from pydantic import ConfigDict
@@ -32,12 +32,12 @@ class Creator(SQLModel, table=True):
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
 
     platform: PlatformChoices = Field(sa_type=SaEnum(PlatformChoices))
-    username: str = Field(default=None, unique=True, nullable=False)
+    username: str = Field(default=None, nullable=False)
 
     name: str
-    followers: int = Field(nullable=True)
+    followers: Optional[int] = Field(nullable=True)
     tier: TierChoices = Field(sa_type=SaEnum(TierChoices))
-    avg_views: int = Field(nullable=True)
+    avg_views: Optional[int] = Field(nullable=True)
 
     # CATEGORIES
     categories: list["Category"] = Relationship(
@@ -54,8 +54,8 @@ class Creator(SQLModel, table=True):
     gender: str
     city: str
 
-    email: str = Field(sa_column=Column(String, nullable=True))
-    phone: str = Field(sa_column=Column(String, nullable=True))
+    email: Optional[str] = Field(sa_column=Column(String, nullable=True))
+    phone: Optional[str] = Field(sa_column=Column(String, nullable=True))
 
     additional_emails: list[str] = Field(default=[], sa_column=Column(ARRAY(String)))
     additional_phones: list[str] = Field(default=[], sa_column=Column(ARRAY(String)))
@@ -98,4 +98,5 @@ class Creator(SQLModel, table=True):
             postgresql_using="gin",
             postgresql_ops={"city": "gin_trgm_ops"},
         ),
+        UniqueConstraint("platform", "username", name="uq_creator_platform_username"),
     )

@@ -260,6 +260,17 @@ class Parser:
         return ParseOutcome(rows, errors)
 
     async def parse_pitch_creator(self, raw_data: list[dict]) -> ParseOutcome:
+        """April is entirely v2, which has no per-deliverable cost split -- only
+        `Cost with Deliverables` and `+ Usage`, collapsed here into package_cost
+        and rights_cost.
+
+        v3/v3.5 DO split them (Cost of Reel(s), Cost of Video Story, YT Shorts
+        Cost, Package Cost...) and v3.5 adds rights/boosting to YouTube. Those
+        columns reach the JSON but are read nowhere below, so a v3 sheet would
+        ingest with every per-deliverable cost silently 0. Handle before the
+        first v3 month.
+        """
+
         rows, errors = [], []
         best: dict[tuple, CreatorLinkRecord] = {}
 
@@ -352,7 +363,7 @@ class Parser:
                         )
                     )
 
-            except (ValidationError, ValueError) as e:
+            except Exception as e:
                 errors.append(IngestRowError(row=i, message=str(e)))
 
         rows = list(best.values())
