@@ -7,7 +7,7 @@ from sqlmodel import select, col, func
 
 from app.core.cache import invalidate, FACETS_PREFIX, SEARCH_PREFIX, SUGGEST_PREFIX
 from app.api.deps import SessionDep, IngestUser, CSRFProtected, RedisDep
-from app.models import IngestJob as IngestJobSQL, Pitch, Campaign, Brand
+from app.models import IngestJob as IngestJobSQL, Pitch, Campaign, Brand, Creator
 from app.services.ingest import Ingest
 from app.services.ingest_job import record_job, job_to_schema, IngestResult
 from app.schemas.ingest import (
@@ -28,6 +28,7 @@ _ROW_COUNT_MODELS = {
     IngestSource.pitch_master: Pitch,
     IngestSource.campaign_master: Campaign,
     IngestSource.brands: Brand,
+    IngestSource.pitch_creator: Creator
 }
 
 _LABELS = {
@@ -41,6 +42,7 @@ _LABELS = {
 _HANDLERS = {
     IngestSource.pitch_master: ingest_service.ingest_pitch_master_data,
     IngestSource.campaign_master: ingest_service.ingest_campaign_master_data,
+    IngestSource.pitch_creator: ingest_service.ingest_pitch_creator_data,
 }
 
 

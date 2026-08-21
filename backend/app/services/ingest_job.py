@@ -60,6 +60,7 @@ async def record_job(
             updated=result.counts.updated,
             skipped=result.counts.skipped,
             failed=result.counts.failed,
+            errors_truncated=result.counts.errors_truncated,
             errors=[e.model_dump() for e in result.errors],
             message=result.message,
         )
@@ -85,7 +86,8 @@ def job_to_schema(row: IngestJobRow) -> IngestJobSchema:
             inserted=row.inserted,
             updated=row.updated,
             skipped=row.skipped,
-            failed=row.failed
+            failed=row.failed,
+            errors_truncated=row.errors_truncated
         ),
         errors=[IngestRowError(**e) for e in (row.errors or [])]
     )

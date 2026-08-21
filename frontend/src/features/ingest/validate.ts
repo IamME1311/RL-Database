@@ -16,7 +16,7 @@ import {
 } from '@/lib/enums';
 import type { IngestSource } from '@/types/api';
 
-export type FieldKind = 'string' | 'number' | 'iso_date' | 'string_array';
+export type FieldKind = 'string' | 'number' | 'iso_date' | 'string_array' | 'any';
 
 interface FieldSpec {
   name: string;
@@ -58,9 +58,45 @@ const CAMPAIGN_MASTER_FIELDS: FieldSpec[] = [
   { name: 'pitch_code', kind: 'string', required: true },
 ];
 
+const PITCH_CREATOR_FIELDS: FieldSpec[] = [
+  { name: "source_file_id", kind: "string", required: true },
+  { name: "sheet", kind: "string", required: true },
+  { name: "platform", kind: "string", required: true },
+  { name: "sheet_row", kind: "any", required: true },
+  { name: "name", kind: "string", required: true },
+  { name: "profile_link", kind: "string", required: false },
+  { name: "followers", kind: "any", required: false },
+  { name: "category", kind: "string", required: false },
+  { name: "tier", kind: "string", required: false },
+  { name: "language", kind: "string", required: false },
+  { name: "gender", kind: "string", required: false },
+  { name: "avg_views", kind: "any", required: false },
+  { name: "city", kind: "string", required: false },
+  { name: "email", kind: "string", required: false },
+  { name: "phone", kind: "string", required: false },
+  { name: "reel_count", kind: "any", required: false },
+  { name: "reel_story_count", kind: "any", required: false },
+  { name: "video_story_count", kind: "any", required: false },
+  { name: "static_carousel_count", kind: "any", required: false },
+  { name: "event_store_visit", kind: "any", required: false },
+  { name: "short_form_videos_count", kind: "any", required: false },
+  { name: "reshare_short_form_videos_count", kind: "any", required: false },
+  { name: "dedicated_video_count", kind: "any", required: false },
+  { name: "integrated_video_count", kind: "any", required: false },
+  { name: "usage_rights", kind: "any", required: false },
+  { name: "ad_promo_rights", kind: "string", required: false },
+  { name: "boosting", kind: "string", required: false },
+  { name: "payment_terms", kind: "string", required: false },
+  { name: "cost_with_deliverables", kind: "string", required: false },
+  { name: "cost_with_deliverables_usage", kind: "string", required: false },
+  { name: "final_cost", kind: "string", required: false },
+  { name: "brand_cost", kind: "string", required: false },
+];
+
 export const SOURCE_FIELDS: Partial<Record<IngestSource, FieldSpec[]>> = {
   pitch_master: PITCH_MASTER_FIELDS,
   campaign_master: CAMPAIGN_MASTER_FIELDS,
+  pitch_creator: PITCH_CREATOR_FIELDS,
 };
 
 export interface ValidationIssue {
@@ -187,6 +223,8 @@ export function validateIngestFile(source: IngestSource, parsed: unknown): Valid
       }
 
       switch (field.kind) {
+        case 'any':
+          break;
         case 'number':
           if (typeof value !== 'number' || !Number.isFinite(value)) {
             errors.push({

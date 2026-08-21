@@ -26,12 +26,14 @@ class IngestCounts(BaseModel):
     updated: int
     skipped: int
     failed: int
+    errors_truncated: int = 0
 
 class IngestRowError(BaseModel):
     row: int
     field: Optional[str] = None
     message: str
     code: Optional[str] = None
+    severity: str = "error"
 
 class IngestJob(BaseModel):
     job_id: UUID
@@ -109,3 +111,55 @@ class Campaign(BaseModel):
     @field_serializer("spreadsheet_link", "report_link")
     def _ser_url(self, v: HttpUrl) -> str:
         return str(v)
+
+
+##############################################################################################################################
+##############################################################################################################################
+
+
+# Pitch Creator
+
+
+class CreatorLinkRecord(BaseModel):
+    """One sheet row: a Creator plus its PitchCreatorLink."""
+
+    source_file_id: str
+    sheet_row: int
+    platform: PlatformChoices
+    username: str
+    name: str
+    followers: Optional[int] = None
+    avg_views: Optional[int] = None
+    tier: TierChoices = TierChoices.NA
+    gender: str = ""
+    city: str = ""
+    categories_raw: str = ""
+    languages_raw: str = ""
+    email: str = ""
+    phone: str = ""
+    reel_count: int = 0
+    reel_story_count: int = 0
+    video_story_count: int = 0
+    static_carousel_count: int = 0
+    event_store_visit: bool = False
+    short_form_videos_count: int = 0
+    reshare_short_form_videos_count: int = 0
+    dedicated_video_count: int = 0
+    integrated_video_count: int = 0
+    usage_rights: str = ""
+    ad_promo_rights: str = ""
+    boosting: str = ""
+    payment_terms: str = ""
+    reel_cost: int = 0
+    reel_story_cost: int = 0
+    video_story_cost: int = 0
+    static_carousel_cost: int = 0
+    short_form_videos_cost: int = 0
+    reshare_short_form_videos_cost: int = 0
+    dedicated_video_cost: int = 0
+    integrated_video_cost: int = 0
+    rights_cost: int = 0
+    boosting_cost: int = 0
+    package_cost: int = 0
+    final_cost: int = 0
+    brand_cost: int = 0

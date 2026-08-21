@@ -18,7 +18,9 @@ class IngestJob(SQLModel, table=True):
     dry_run: bool = Field(default=False, nullable=False)
     file_name: Optional[str] = Field(default=None)
 
-    started_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    started_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False)
+    )
     finished_at: Optional[datetime] = Field(
         default=None, sa_column=Column(DateTime(timezone=True), nullable=True)
     )
@@ -30,5 +32,9 @@ class IngestJob(SQLModel, table=True):
     skipped: int = Field(default=0, nullable=False)
     failed: int = Field(default=0, nullable=False)
 
-    errors: list[dict] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False, server_default="[]"))
+    errors: list[dict] = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False, server_default="[]"),
+    )
+    errors_truncated: int = Field(default=0, nullable=False)
     message: Optional[str] = Field(default=None)
