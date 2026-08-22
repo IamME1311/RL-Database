@@ -4,10 +4,11 @@ Nothing here commits. The route owns the transaction so a dry run can roll the
 whole thing back, including the brands this creates
 """
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlmodel import select, col, tuple_
+from sqlmodel import select, col, SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from .parser import Parser, extract_file_id
 from app.models import Brand, Pitch, Campaign, Creator, PitchCreatorLink
@@ -15,27 +16,43 @@ from app.schemas.ingest import IngestCounts, IngestRowError
 from app.services.ingest_job import IngestResult
 
 MAX_STORED_ERRORS = 500
+PG_MAX_PARAMS = 32767
 
 
 class Ingest:
     def __init__(self):
         self.parser = Parser()
 
+    async def _bulk_insert(self, session: AsyncSession, model: SQLModel, rows: list[dict]) -> None:
+        if not rows:
+            return
+        per_row = len(rows[0])
+        chunk = max(1, PG_MAX_PARAMS // per_row)
+        for i in range(0, len(rows), chunk):
+            await session.execute(pg_insert(model).values(rows[i : i + chunk]))
+
     async def _load_creators(self, session: AsyncSession, wanted: set[tuple]) -> dict[tuple, UUID]:
+        """Match on (platform, username) -- the composite key.
+
+        Queries usernames only and filters the pairs in Python: a `tuple_ IN`
+        against the enum column returned inconsistent row counts for the same
+        input, which silently lost creators.
+        """
+        if not wanted:
+            return {}
+
         found: dict[tuple, UUID] = {}
-
-        pairs = [(p.value if hasattr(p, "value") else p, u) for p, u in wanted]
-
-        for i in range(0, len(pairs), 1000):
-            chunk = pairs[i : i + 1000]
-            rows = (
-                await session.exec(
-                    select(Creator).where(
-                        tuple_(col(Creator.platform), col(Creator.username)).in_(chunk)
-                    )
-                )
-            ).all()
-            found.update({(c.platform, c.username): c.id for c in rows})
+        usernames = sorted({u for _, u in wanted})
+        for i in range(0, len(usernames), 1000):
+            chunk = usernames[i : i + 1000]
+            rows = (await session.exec(
+                select(Creator).where(col(Creator.username).in_(chunk))
+            )).all()
+            print(f"chunk {i//1000}: asked {len(chunk)} usernames, got {len(rows)} rows")
+            for c in rows:
+                key = (c.platform, c.username)
+                if key in wanted:
+                    found[key] = c.id
         return found
 
     async def _resolve_brands(
@@ -206,28 +223,52 @@ class Ingest:
 
         by_key = {(r.platform, r.username): r for r in parsed}
         created = 0
+        new_rows = []
         for key in wanted - set(existing):
             src = by_key[key]
-            session.add(
-                Creator(
-                    platform=src.platform,
-                    username=src.username,
-                    name=src.name,
-                    followers=src.followers,
-                    avg_views=src.avg_views,
-                    tier=src.tier,
-                    gender=src.gender,
-                    city=src.city,
-                    categories_raw=src.categories_raw,
-                    languages_raw=src.languages_raw,
-                    email=src.email or None,
-                    phone=src.phone or None,
-                )
+            # session.add(
+            #     Creator(
+            #         platform=src.platform,
+            #         username=src.username,
+            #         name=src.name,
+            #         followers=src.followers,
+            #         avg_views=src.avg_views,
+            #         tier=src.tier,
+            #         gender=src.gender,
+            #         city=src.city,
+            #         categories_raw=src.categories_raw,
+            #         languages_raw=src.languages_raw,
+            #         email=src.email or None,
+            #         phone=src.phone or None,
+            #     )
+            # )
+            # created += 1
+            new_rows.append(
+                {
+                    "id": uuid4(),
+                    "platform": src.platform,
+                    "username": src.username,
+                    "name": src.name,
+                    "followers": src.followers,
+                    "avg_views": src.avg_views,
+                    "tier": src.tier,
+                    "gender": src.gender,
+                    "city": src.city,
+                    "categories_raw": src.categories_raw,
+                    "languages_raw": src.languages_raw,
+                    "email": src.email or None,
+                    "phone": src.phone or None,
+                }
             )
-            created += 1
-        if created:
-            await session.flush()
+            created = len(new_rows)
+        if new_rows:
+            # await session.flush()
+            await self._bulk_insert(session, Creator, new_rows)
             existing = await self._load_creators(session, wanted)
+            print(
+                f"wanted={len(wanted)} created={created} reloaded={len(existing)} "
+                f"missing={len(wanted - set(existing))}"
+            )
 
         have = {
             (l.creator_id, l.pitch_id)
@@ -235,6 +276,7 @@ class Ingest:
         }
 
         inserted = skipped = 0
+        link_rows = []
         for r in parsed:
             pitch_id = pitch_by_file.get(r.source_file_id)
             if pitch_id is None:
@@ -248,7 +290,7 @@ class Ingest:
                 )
                 continue
 
-            creator_id = existing[(r.platform, r.username)]
+            creator_id = existing.get((r.platform, r.username))
             if creator_id is None:
                 errors.append(
                     IngestRowError(
@@ -263,34 +305,44 @@ class Ingest:
                 skipped += 1
                 continue
 
-            session.add(
-                PitchCreatorLink(
-                    creator_id=creator_id,
-                    pitch_id=pitch_id,
-                    **r.model_dump(
-                        exclude={
-                            "source_file_id",
-                            "sheet_row",
-                            "platform",
-                            "username",
-                            "name",
-                            "followers",
-                            "avg_views",
-                            "tier",
-                            "gender",
-                            "city",
-                            "categories_raw",
-                            "languages_raw",
-                            "email",
-                            "phone",
-                        }
-                    ),
-                )
-            )
+            # session.add(
+            #     PitchCreatorLink(
+            #         creator_id=creator_id,
+            #         pitch_id=pitch_id,
+            #         **r.model_dump(
+            #             exclude={
+            #                 "source_file_id",
+            #                 "sheet_row",
+            #                 "platform",
+            #                 "username",
+            #                 "name",
+            #                 "followers",
+            #                 "avg_views",
+            #                 "tier",
+            #                 "gender",
+            #                 "city",
+            #                 "categories_raw",
+            #                 "languages_raw",
+            #                 "email",
+            #                 "phone",
+            #             }
+            #         ),
+            #     )
+            # )
+            link_rows.append({
+                "creator_id": creator_id, "pitch_id": pitch_id,
+                **r.model_dump(exclude={
+                    "source_file_id", "sheet_row", "platform", "username", "name",
+                    "followers", "avg_views", "tier", "gender", "city",
+                    "categories_raw", "languages_raw", "email", "phone",
+                }),
+            })
             have.add((creator_id, pitch_id))
             inserted += 1
 
-        await session.flush()
+        if link_rows:
+            await self._bulk_insert(session, PitchCreatorLink, link_rows)
+            await session.flush()
 
         failed = sum(1 for e in errors if e.severity == "error")
         truncated = max(0, len(errors) - MAX_STORED_ERRORS)
