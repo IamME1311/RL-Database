@@ -42,6 +42,8 @@ from app.models import (
     PitchCreatorLink,
     Company,
     User,
+    Category,
+    Language,
 )
 
 router = APIRouter()
@@ -529,11 +531,11 @@ async def search_pitches(
 async def facets_creators(session: SessionDep, redis: RedisDep, user: CurrentUser):
     async def produce():
         cats, langs = set(), set()
-        for raw_c, raw_l in (
-            await session.exec(select(Creator.categories_raw, Creator.languages_raw))
+        for cat, lang in (
+            await session.exec(select(Category.name, Language.name))
         ).all():
-            cats.update(p.strip() for p in (raw_c or "").split(",") if p.strip())
-            langs.update(p.strip() for p in (raw_l or "").split(",") if p.strip())
+            cats.update(p.strip() for p in (cat or "").split(",") if p.strip())
+            langs.update(p.strip() for p in (lang or "").split(",") if p.strip())
 
         return {
             "platforms": await _distinct(session, Creator.platform),
